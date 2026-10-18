@@ -237,8 +237,9 @@ export function getActivePatterns(settings: ExtensionSettings): string[] {
     return [];
   }
 
+  // Global mode already relaxes everything; its pattern rules still decide which allowed methods apply.
   if (settings.mode === 'global') {
-    return ['<all_urls>', ...settings.domainRules.map((rule) => rule.pattern)];
+    return ['<all_urls>', ...normalizePatterns([...settings.whitelist, ...settings.domainRules.map((rule) => rule.pattern)])];
   }
 
   return normalizePatterns([...settings.whitelist, ...settings.domainRules.map((rule) => rule.pattern)]);
@@ -292,14 +293,19 @@ export function getEffectiveCorsRuleForRequest(url: string, initiatorUrl: string
   return { state: 'inactive', source: 'none' };
 }
 
+// Methods come from the most specific rule that relaxed this request. A method override on a URL that is
+// not itself a rule (such as a query-specific URL) refines whichever rule relaxed a request to that URL.
+// Individual rules outrank domain rules; within each, the longer pattern wins. Chrome's DNR priorities
+// in dnrRules.ts encode the same order.
 export function getAllowedMethodsForRequest(url: string, initiatorUrl: string | undefined, settings: ExtensionSettings): string[] {
-  const individualPatterns = [...settings.whitelist, ...Object.keys(settings.methodOverrides)];
-  const individualCandidates = individualPatterns
-    .filter((pattern) => matchesRequestPattern(url, initiatorUrl, pattern))
-    .sort((left, right) => right.length - left.length);
+  const rulePatterns = new Set([...settings.whitelist, ...settings.domainRules.map((rule) => rule.pattern)]);
+  const individualCandidates = [
+    ...settings.whitelist.filter((pattern) => matchesActiveRule(url, initiatorUrl, pattern, settings)),
+    ...Object.keys(settings.methodOverrides).filter((pattern) => !rulePatterns.has(pattern) && matchesUrlPattern(url, pattern))
+  ].sort((left, right) => right.length - left.length);
   const domainCandidates = settings.domainRules
+    .filter((rule) => matchesDomainRule(url, initiatorUrl, rule, settings))
     .map((rule) => rule.pattern)
-    .filter((pattern) => matchesRequestPattern(url, initiatorUrl, pattern))
     .sort((left, right) => right.length - left.length);
   const matchingPattern = individualCandidates[0] ?? domainCandidates[0];
   return matchingPattern ? settings.methodOverrides[matchingPattern] ?? settings.allowMethods : settings.allowMethods;

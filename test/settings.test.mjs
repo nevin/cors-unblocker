@@ -89,7 +89,8 @@ describe('settings pattern normalization', () => {
       enabled: true,
       mode: 'whitelist',
       whitelist: ['api.example.dev'],
-      methodOverrides: { 'api.example.dev': ['GET', 'POST'] }
+      methodOverrides: { 'api.example.dev': ['GET', 'POST'] },
+      anyOriginTargets: ['api.example.dev']
     });
 
     assert.deepEqual(getAllowedMethodsForRequest('https://api.example.dev/users', 'https://app.example.dev/', settings), ['GET', 'POST']);
@@ -113,7 +114,8 @@ describe('settings pattern normalization', () => {
       enabled: true,
       mode: 'whitelist',
       whitelist: ['api.example.dev', 'https://api.example.dev/private/*'],
-      methodOverrides: { 'https://api.example.dev/private/*': ['PATCH'] }
+      methodOverrides: { 'https://api.example.dev/private/*': ['PATCH'] },
+      anyOriginTargets: ['api.example.dev', 'https://api.example.dev/private/*']
     });
 
     assert.deepEqual(getAllowedMethodsForRequest('https://api.example.dev/private/data', undefined, settings), ['PATCH']);
@@ -184,7 +186,8 @@ describe('settings pattern normalization', () => {
       methodOverrides: {
         'https://api.example.dev/private/*': ['PATCH'],
         'api.example.dev': ['GET']
-      }
+      },
+      anyOriginTargets: ['https://api.example.dev/private/*', 'api.example.dev']
     });
 
     assert.deepEqual(getAllowedMethodsForRequest('https://api.example.dev/private/data', 'https://app.example.dev/', settings), ['PATCH']);

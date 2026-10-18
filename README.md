@@ -18,7 +18,16 @@ Rule: http://localhost:3000
 
 So add the page you are developing, not the API it calls. A rule's own responses are opened to every website only when you turn on **Any site may read** for that rule. Global mode relaxes every request from every site.
 
-In Chrome, a trusted page is matched by domain only, so `http://localhost:3000` also trusts other ports and paths on `localhost`. Firefox matches the full pattern.
+Skip rules win over everything else. Allowed methods come from the most specific rule that relaxed the request, and a method override on a specific URL (for example one with a query string) refines it.
+
+### Chrome limitations
+
+Chrome rules are generated from the same pattern matcher Firefox uses, and a parity test checks them against it. A few things Chrome's rule engine cannot express:
+
+- A trusted page is matched by domain only, so `http://localhost:3000` also trusts other ports, paths and subdomains of `localhost`. Firefox matches the full pattern.
+- A trusted page with a wildcard in the middle of the host, such as `https://www.*.example.com`, cannot be matched as a page, so its requests are not relaxed.
+- A skip pattern with a path skips matching request URLs, but not requests made by pages under that path.
+- With **Allow credentials** on, Chrome cannot echo the requesting origin, so "Any site may read" has no effect. Requests made by trusted pages still work.
 
 ## Features
 
