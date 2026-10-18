@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="CORS Unblocker">
+  <g>
+    <path id="gateway" d="M54.65 25.1A27 27 0 1 0 54.65 70.9" fill="none" stroke="#0F2D4A" stroke-width="16" stroke-linecap="round"/>
+    <path id="request-shaft" d="M40.35 48H72.65" fill="none" stroke="#0FAF91" stroke-width="13" stroke-linecap="round"/>
+    <path id="request-head" d="M71.65 33L88.65 48L71.65 63Z" fill="#0FAF91" stroke="#0FAF91" stroke-width="4" stroke-linejoin="round"/>
+  </g>
+</svg>

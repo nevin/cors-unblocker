@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="5.35 13 253.3 70" role="img" aria-label="CORS Unblocker">
+  <style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;600&amp;display=block');
+    .w{font-family:Inter,'IBM Plex Sans','Helvetica Neue',Arial,sans-serif}</style>
+  <g>
+    <path id="gateway" d="M54.65 25.1A27 27 0 1 0 54.65 70.9" fill="none" stroke="#0F2D4A" stroke-width="16" stroke-linecap="round"/>
+    <path id="request-shaft" d="M40.35 48H72.65" fill="none" stroke="#0FAF91" stroke-width="13" stroke-linecap="round"/>
+    <path id="request-head" d="M71.65 33L88.65 48L71.65 63Z" fill="#0FAF91" stroke="#0FAF91" stroke-width="4" stroke-linejoin="round"/>
+  </g>
+  <text class="w" x="110.65" y="53.27" font-size="52" font-weight="600" letter-spacing="0.6" fill="#0F2D4A" text-anchor="start">CORS</text>
+  <text class="w" x="110.65" y="80.54" font-size="21" font-weight="500" letter-spacing="1.9" fill="#64748B" text-anchor="start">UNBLOCKER</text>
+</svg>
