@@ -35,8 +35,7 @@ browser.webRequest.onBeforeRequest.addListener(
   {
     urls: ['<all_urls>'],
     types: ['main_frame', 'sub_frame', 'xmlhttprequest', 'script', 'stylesheet', 'image', 'font', 'media', 'websocket', 'ping']
-  },
-  ['blocking']
+  }
 );
 
 onSettingsChanged((settings) => {
