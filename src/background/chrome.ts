@@ -1,10 +1,12 @@
-import { loadSettings, onSettingsChanged, recordDiscoveredRequest } from '../shared/browserApi';
+import { clearPersistedRequestLog, loadSettings, onSettingsChanged, recordDiscoveredRequest } from '../shared/browserApi';
 import { ExtensionSettings, getActivePatterns, getPatternHost, isCredentialsSupported, toUrlPatternRegExpSource } from '../shared/settings';
 
 const TARGET_RULE_ID_BASE = 10_000;
 const INITIATOR_RULE_ID_BASE = 20_000;
 const MAX_RULES = 250;
 let ruleUpdateQueue = Promise.resolve();
+// Null until settings load after the service worker wakes; requests seen before then are not recorded.
+let currentSettings: ExtensionSettings | null = null;
 const GLOBAL_RULE_PRIORITY = 1;
 const DOMAIN_RULE_PRIORITY_BASE = 100;
 const INDIVIDUAL_RULE_PRIORITY_BASE = 200;
@@ -25,6 +27,7 @@ const RESOURCE_TYPES: chrome.declarativeNetRequest.ResourceType[] = [
 ];
 chrome.runtime.onInstalled.addListener(() => {
   void refreshRules();
+  void clearPersistedRequestLog();
 });
 
 chrome.runtime.onStartup.addListener(() => {
@@ -33,7 +36,9 @@ chrome.runtime.onStartup.addListener(() => {
 
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
-    void recordDiscoveredRequest(details.url, details.initiator, details.tabId);
+    if (currentSettings?.enabled) {
+      void recordDiscoveredRequest(details.url, details.initiator, details.tabId);
+    }
   },
   {
     urls: ['<all_urls>'],
@@ -42,13 +47,15 @@ chrome.webRequest.onBeforeRequest.addListener(
 );
 
 onSettingsChanged((settings) => {
+  currentSettings = settings;
   queueApplyRules(settings);
 });
 
 void refreshRules();
 
 async function refreshRules(): Promise<void> {
-  await queueApplyRules(await loadSettings());
+  currentSettings = await loadSettings();
+  await queueApplyRules(currentSettings);
 }
 
 function queueApplyRules(settings: ExtensionSettings): Promise<void> {

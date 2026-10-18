@@ -3,7 +3,8 @@ import {
   SettingsController,
   collapseDiscoveredRequests,
   loadDiscoveredRequests,
-  onDiscoveredRequestsChanged
+  onDiscoveredRequestsChanged,
+  toLoggedUrl
 } from '../shared/browserApi';
 import { DEFAULT_ALLOW_METHODS, CorsMode, DomainRuleType, EffectiveCorsRule, ExtensionSettings, exportRules, getAllowedMethodsForRequest, getEffectiveCorsRuleForRequest, importRules, isCorsEnabledForRequest, isCorsSkippedForRequest, isCredentialsSupported, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
 import { applyTheme } from '../shared/theme';
@@ -229,7 +230,12 @@ async function initialize(): Promise<void> {
   });
 }
 
-function observeRequest(url: string): void {
+function observeRequest(requestUrl: string): void {
+  const url = toLoggedUrl(requestUrl);
+  if (!url) {
+    return;
+  }
+
   const existing = discoveredRequests.find((request) => request.url === url && request.tabId === inspectedTabId);
   const observed: DiscoveredRequest = existing
     ? { ...existing, count: existing.count + 1, lastSeen: Date.now() }

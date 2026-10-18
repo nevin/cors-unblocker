@@ -37,7 +37,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "cors-dev-tool@example.local",
-      "strict_min_version": "102.0"
+      "strict_min_version": "115.0"
     }
   }
 }

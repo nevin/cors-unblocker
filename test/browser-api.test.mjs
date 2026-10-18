@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 const stored = new Map();
+const sessionStored = new Map();
 const listeners = [];
 const setCalls = [];
 
@@ -18,6 +19,22 @@ const storage = {
         Object.fromEntries(Object.entries(values).map(([key, value]) => [key, { newValue: value }])),
         'local'
       ));
+    },
+    async remove(keys) {
+      (Array.isArray(keys) ? keys : [keys]).forEach((key) => stored.delete(key));
+    }
+  },
+  session: {
+    async get(keys) {
+      const requestedKeys = Array.isArray(keys) ? keys : [keys];
+      return Object.fromEntries(requestedKeys.filter((key) => sessionStored.has(key)).map((key) => [key, sessionStored.get(key)]));
+    },
+    async set(values) {
+      Object.entries(values).forEach(([key, value]) => sessionStored.set(key, value));
+      listeners.forEach((listener) => listener(
+        Object.fromEntries(Object.entries(values).map(([key, value]) => [key, { newValue: value }])),
+        'session'
+      ));
     }
   },
   onChanged: {
@@ -28,7 +45,7 @@ const storage = {
 };
 
 globalThis.chrome = { storage };
-const { SettingsController } = await import('../dist-test/shared/browserApi.js');
+const { REQUEST_LOG_KEY, SettingsController, clearPersistedRequestLog, onDiscoveredRequestsChanged, recordDiscoveredRequest, toLoggedUrl } = await import('../dist-test/shared/browserApi.js');
 
 describe('SettingsController', () => {
   it('loads legacy settings and updates only changed fields', async () => {
@@ -74,5 +91,38 @@ describe('SettingsController', () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     assert.equal(received.at(-1).enabled, true);
+  });
+});
+
+describe('request log', () => {
+  it('drops query strings and fragments', () => {
+    assert.equal(toLoggedUrl('https://api.example.dev/users?token=secret#section'), 'https://api.example.dev/users');
+    assert.equal(toLoggedUrl('http://localhost:3000'), 'http://localhost:3000/');
+    assert.equal(toLoggedUrl('chrome-extension://abc/page.html'), null);
+    assert.equal(toLoggedUrl('not a url'), null);
+  });
+
+  it('records to session storage without query strings and never to local storage', async () => {
+    const localWritesBefore = setCalls.filter((values) => REQUEST_LOG_KEY in values).length;
+    const notified = [];
+    onDiscoveredRequestsChanged((requests) => notified.push(requests));
+
+    await recordDiscoveredRequest('https://api.example.dev/users?token=secret', 'https://app.example.dev/page?session=abc', 7);
+    await recordDiscoveredRequest('https://api.example.dev/users?token=other', 'https://app.example.dev/page?session=abc', 7);
+
+    const log = sessionStored.get(REQUEST_LOG_KEY);
+    assert.equal(log.length, 1);
+    assert.equal(log[0].url, 'https://api.example.dev/users');
+    assert.equal(log[0].initiator, 'https://app.example.dev/page');
+    assert.equal(log[0].count, 2);
+    assert.doesNotMatch(JSON.stringify(log), /secret|session=abc/);
+    assert.equal(setCalls.filter((values) => REQUEST_LOG_KEY in values).length, localWritesBefore);
+    assert.equal(notified.at(-1)[0].url, 'https://api.example.dev/users');
+  });
+
+  it('removes a request log persisted by earlier versions', async () => {
+    stored.set(REQUEST_LOG_KEY, [{ url: 'https://old.example.dev/?token=secret' }]);
+    await clearPersistedRequestLog();
+    assert.equal(stored.has(REQUEST_LOG_KEY), false);
   });
 });

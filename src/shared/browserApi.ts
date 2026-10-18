@@ -199,6 +199,8 @@ export function collapseDiscoveredRequests(requests: DiscoveredRequest[]): Disco
 }
 
 export const REQUEST_LOG_KEY = 'corsDevControlRequestLog';
+// The log is kept in session storage so browsing history never reaches disk and is cleared when the browser closes.
+const requestLogStorage = runtimeApi.storage.session;
 let requestCache: DiscoveredRequest[] | null = null;
 let requestCacheLoad: Promise<DiscoveredRequest[]> | null = null;
 let requestFlushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -213,7 +215,7 @@ export async function loadDiscoveredRequests(): Promise<DiscoveredRequest[]> {
     return requestCacheLoad;
   }
 
-  requestCacheLoad = runtimeApi.storage.local.get(REQUEST_LOG_KEY).then((stored) => {
+  requestCacheLoad = requestLogStorage.get(REQUEST_LOG_KEY).then((stored) => {
     requestCache = normalizeRequestList(stored[REQUEST_LOG_KEY]);
     requestCacheLoad = null;
     return requestCache;
@@ -235,12 +237,13 @@ function normalizeRequestList(value: unknown): DiscoveredRequest[] {
   }));
 }
 
-export async function recordDiscoveredRequest(url: string, initiator: string | undefined, tabId: number | undefined): Promise<void> {
-  if (!/^https?:\/\//.test(url) || tabId === undefined || tabId < 0) {
+export async function recordDiscoveredRequest(requestUrl: string, initiator: string | undefined, tabId: number | undefined): Promise<void> {
+  const url = toLoggedUrl(requestUrl);
+  if (!url || tabId === undefined || tabId < 0) {
     return;
   }
 
-  const normalizedInitiator = initiator && /^https?:\/\//.test(initiator) ? initiator : null;
+  const normalizedInitiator = initiator ? toLoggedUrl(initiator) : null;
   const requests = await loadDiscoveredRequests();
   const existing = requests.find((request) => request.url === url && request.initiator === normalizedInitiator && request.tabId === tabId);
   const nextRequest: DiscoveredRequest = existing
@@ -249,6 +252,26 @@ export async function recordDiscoveredRequest(url: string, initiator: string | u
   requestCache = [nextRequest, ...requests.filter((request) => request !== existing)].slice(0, 500);
 
   await scheduleRequestFlush();
+}
+
+// Drops the query string and fragment, which often carry tokens or personal data.
+export function toLoggedUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return null;
+    }
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+// Earlier versions persisted the log in storage.local; remove any copy left on disk.
+export async function clearPersistedRequestLog(): Promise<void> {
+  await runtimeApi.storage.local.remove(REQUEST_LOG_KEY);
 }
 
 function scheduleRequestFlush(): Promise<void> {
@@ -268,7 +291,7 @@ function scheduleRequestFlush(): Promise<void> {
 
 async function flushRequestLog(): Promise<void> {
   const requests = requestCache ?? [];
-  requestLogWrite = requestLogWrite.then(() => runtimeApi.storage.local.set({ [REQUEST_LOG_KEY]: requests }));
+  requestLogWrite = requestLogWrite.then(() => requestLogStorage.set({ [REQUEST_LOG_KEY]: requests }));
   await requestLogWrite;
   const resolvers = requestFlushResolvers;
   requestFlushResolvers = [];
@@ -277,7 +300,7 @@ async function flushRequestLog(): Promise<void> {
 
 export function onDiscoveredRequestsChanged(handler: (requests: DiscoveredRequest[]) => void): void {
   runtimeApi.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== 'local' || !changes[REQUEST_LOG_KEY]) {
+    if (areaName !== 'session' || !changes[REQUEST_LOG_KEY]) {
       return;
     }
 

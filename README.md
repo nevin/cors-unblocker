@@ -19,7 +19,8 @@ This is a development tool. Keep it disabled when you are not actively debugging
 - In whitelist mode, matches both destination URLs and requests initiated by an allowed site
 - Allowed methods control the CORS preflight response and do not block network requests.
 - Chrome/Edge Manifest V3 build using Declarative Net Request
-- Firefox build using response header interception
+- Firefox build using response header interception (Firefox 115 or later)
+- Request discovery records only while overrides are enabled, drops query strings and fragments, and is kept in session storage, so it is never written to disk and is cleared when the browser closes
 
 ## Setup
 

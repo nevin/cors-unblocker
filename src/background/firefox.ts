@@ -1,4 +1,4 @@
-import { loadSettings, onSettingsChanged, recordDiscoveredRequest } from '../shared/browserApi';
+import { clearPersistedRequestLog, loadSettings, onSettingsChanged, recordDiscoveredRequest } from '../shared/browserApi';
 import { ExtensionSettings, getAllowedMethodsForRequest, isCorsEnabledForRequest, isCredentialsSupported } from '../shared/settings';
 
 interface FirefoxHeader {
@@ -21,6 +21,7 @@ let currentSettings: ExtensionSettings | null = null;
 
 browser.runtime.onInstalled.addListener(() => {
   void refreshSettings();
+  void clearPersistedRequestLog();
 });
 
 browser.runtime.onStartup.addListener(() => {
@@ -29,6 +30,10 @@ browser.runtime.onStartup.addListener(() => {
 
 browser.webRequest.onBeforeRequest.addListener(
   (details) => {
+    if (!currentSettings?.enabled) {
+      return;
+    }
+
     const requestContext = details as typeof details & { originUrl?: string; documentUrl?: string; type?: string };
     void recordDiscoveredRequest(details.url, requestContext.originUrl ?? requestContext.documentUrl, details.tabId);
   },
