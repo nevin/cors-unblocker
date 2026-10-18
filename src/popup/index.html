@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CORS</title>
+    <link rel="stylesheet" href="shared.css" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="header">
+        <div>
+          <p class="eyebrow">Dev tool</p>
+          <h1>CORS Control</h1>
+          <p class="subtitle">Relax response headers while you build.</p>
+        </div>
+        <label class="switch" aria-label="Toggle CORS override">
+          <input id="enabled" type="checkbox" />
+          <span></span>
+        </label>
+      </header>
+
+      <section class="status" id="status" aria-live="polite">Disabled</section>
+      <p id="notice" class="notice" role="status" aria-live="polite"></p>
+
+      <section class="current-site" aria-labelledby="current-site-title">
+        <p class="eyebrow" id="current-site-title">Current page</p>
+        <p class="current-site__origin" id="current-site">Checking current page...</p>
+        <p class="current-site__coverage" id="current-coverage" aria-live="polite"></p>
+        <button id="allow-current" type="button" disabled>Allow this page</button>
+      </section>
+
+      <fieldset class="modes">
+        <legend>Mode</legend>
+        <label>
+          <input type="radio" name="mode" value="whitelist" />
+          <span><strong>Whitelist</strong><small>Only approved sites</small></span>
+        </label>
+        <label>
+          <input type="radio" name="mode" value="global" />
+          <span><strong>Global</strong><small>Every website</small></span>
+        </label>
+        <p class="warning" id="mode-warning" hidden>This changes responses for every website. Use global mode only while debugging.</p>
+      </fieldset>
+
+      <button id="manage" type="button">Manage rules</button>
+      <label class="theme-control" for="theme">Appearance
+        <select id="theme">
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "cors-unblocker",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "description": "A browser extension for selectively relaxing CORS response headers during local web development, with whitelist and global modes.",
+  "type": "module",
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && npm run build:chrome && npm run build:firefox",
+    "build:chrome": "node scripts/build.mjs chrome",
+    "build:firefox": "node scripts/build.mjs firefox",
+    "build:release": "npm run clean && node scripts/build.mjs chrome --release && node scripts/build.mjs firefox --release",
+    "package": "npm run build:release && node scripts/package.mjs",
+    "check": "tsc --noEmit",
+    "build:test": "tsc --outDir dist-test --rootDir src",
+    "test": "npm run build:test && node --test test/*.test.mjs",
+    "verify-build": "npm run build && node scripts/verify-build.mjs"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.3.0",
+    "@types/firefox-webext-browser": "143.0.0",
+    "esbuild": "0.25.9",
+    "typescript": "7.0.2"
+  }
+}

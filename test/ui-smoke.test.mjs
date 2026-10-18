@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { describe, it } from 'node:test';
+
+async function source(path) {
+  return readFile(new URL(`../${path}`, import.meta.url), 'utf8');
+}
+
+describe('ui source smoke checks', () => {
+  it('devtools panel exposes the primary UI hooks', async () => {
+    const html = await source('src/devtools/panel.html');
+    const script = await source('src/devtools/panel.ts');
+
+    ['id="devtools-panel"', 'id="control-card"', 'id="panel-header"', 'id="title-group"', 'id="title-icon"', 'src="../assets/icon.svg"', 'id="header-controls"', 'id="mode-selector"', 'id="configuration-card"', 'id="configuration-scope"', 'id="methods-section"', 'id="advanced-headers"', 'id="details-section"', 'id="details-tabs"', 'id="page-url-row"', 'id="coverage"', 'id="effective-rule"', 'id="effective-methods"', 'id="allow-page"', 'id="page-rule"', 'id="rule-defaults"', 'Rule defaults', 'Add domain rule', 'id="add-domain-rule"', 'Add active URL', 'Add skip URL', 'id="current-links"', 'id="rules-list"', 'id="current-link-filter-input"', 'id="request-scope-filter"', 'data-request-scope="current"', 'data-request-scope="other"', 'id="rules-filter-input"', 'id="rule-state-filter"', 'id="tab-backup"', 'id="panel-backup"', 'id="backup-actions"', 'id="import-preview"', 'id="import-preview-summary"', 'id="confirm-import-rules"', 'id="cancel-import-rules"', 'id="export-rules"', 'id="import-rules"', 'header-theme-control', 'class="advanced-options"', 'Requests', 'This page', 'Other tabs', 'Import/Export'].forEach((token) => {
+      assert.match(html, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    });
+    assert.match(html, /id="tab-rules"[^>]*class="tab is-active"/);
+    assert.match(html, /id="panel-rules"[^>]*class="tab-panel is-visible"/);
+    assert.match(script, /request-group-heading/);
+    assert.match(script, /createElement\('details'\)/);
+    assert.match(script, /groupedRequests\.length/);
+    assert.match(script, /collapsedRequestGroups/);
+    assert.match(script, /parsedUrl\.hostname/);
+    assert.match(script, /Copy URLs for/);
+    assert.match(script, /groupedRequests\.map\(\(request\) => request\.url\)\.join\('\\n'\)/);
+    assert.doesNotMatch(html, /id="domain-rule-form"|id="domain-pattern"|id="domain-type"|id="domain-rules"/);
+    assert.doesNotMatch(html, /id="link-filter-input"/);
+    assert.doesNotMatch(html, /id="tab-other"|id="panel-other"|id="panel-domains"/);
+  });
+
+  it('options page exposes danger zone and managed lists', async () => {
+    const html = await source('src/options/index.html');
+
+    ['class="setting-section danger-zone"', 'id="reset"', 'id="list"', 'id="discovered-list"', 'id="skip-list"', 'class="setting-section advanced-options"', 'Import/Export rules', 'id="import-preview"', 'id="import-preview-summary"', 'id="confirm-import-rules"', 'id="cancel-import-rules"'].forEach((token) => {
+      assert.match(html, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    });
+    assert.equal((html.match(/<h2>Active rules<\/h2>/g) ?? []).length, 1);
+  });
+
+  it('popup uses page-scoped copy', async () => {
+    const html = await source('src/popup/index.html');
+
+    assert.match(html, /Current page/);
+    assert.match(html, /Allow this page/);
+    assert.doesNotMatch(html, /Allow this site|Current tab/);
+  });
+
+  it('shared styles define reusable chip and disclosure patterns', async () => {
+    const css = await source('src/shared/shared.css');
+
+    ['.methods label:has(.allow-method)', '.method-options label:has(input:checked)', '.advanced-options', '.method-editor[open] summary'].forEach((token) => {
+      assert.match(css, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    });
+  });
+});

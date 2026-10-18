@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "lib": ["DOM", "ES2022"],
+    "types": ["chrome", "firefox-webext-browser"],
+    "skipLibCheck": true,
+    "outDir": "dist-types"
+  },
+  "include": ["src/**/*.ts", "scripts/**/*.mjs"]
+}

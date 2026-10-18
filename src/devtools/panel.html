@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CORS</title>
+    <link rel="stylesheet" href="shared.css" />
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <main id="devtools-panel" class="panel">
+      <section id="control-card" class="control-card" aria-labelledby="control-title">
+        <header id="panel-header" class="panel__header">
+          <div id="title-group" class="title-group">
+            <img id="title-icon" class="title-icon" src="../assets/icon.svg" alt="" aria-hidden="true" />
+            <h1 id="control-title">CORS</h1>
+            <p class="subtitle">Manage CORS rules for this page.</p>
+          </div>
+          <div id="header-controls" class="header-controls">
+            <fieldset id="mode-selector" class="modes">
+              <legend>Mode</legend>
+              <label><input type="radio" name="mode" value="whitelist" /> <span><strong>Whitelist</strong><small>Only approved sites</small></span></label>
+              <label><input type="radio" name="mode" value="global" /> <span><strong>Global</strong><small>Every website</small></span></label>
+            </fieldset>
+            <label class="theme-control header-theme-control" for="theme">Theme
+              <select id="theme">
+                <option value="system">System</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+            <label class="switch" aria-label="Toggle CORS override">
+              <input id="enabled" type="checkbox" />
+              <span></span>
+            </label>
+          </div>
+        </header>
+
+        <p id="notice" class="notice" role="status" aria-live="polite"></p>
+
+        <section id="configuration-card" class="configuration-card" aria-labelledby="configuration-title">
+          <div id="configuration-scope" class="configuration-card__scope">
+            <p class="eyebrow" id="configuration-title">Inspected page</p>
+            <div id="page-url-row" class="page-url-row"><code id="page-url">Checking current page...</code><p id="coverage" class="coverage" aria-live="polite" hidden></p></div>
+            <p class="scope-preview"><span>Page rule</span><code id="page-rule">Unavailable</code></p>
+            <p id="effective-rule" class="effective-rule" hidden></p>
+            <p id="effective-methods" class="effective-rule" hidden></p>
+            <button id="allow-page" type="button" disabled>Allow this page</button>
+          </div>
+
+          <details id="advanced-headers" class="advanced-options">
+            <summary>Advanced headers</summary>
+            <label class="header-option"><input id="allow-all-headers" type="checkbox" /> <span><strong>Allow all request headers</strong><small>Sets Access-Control-Allow-Headers to *</small><em id="headers-warning" hidden>Wildcard headers may not work with credentialed requests.</em></span></label>
+            <label class="header-option"><input id="allow-credentials" type="checkbox" /> <span><strong>Allow credentials</strong><small>Uses the initiator origin instead of *.</small><em id="credentials-hint">Use an explicit http(s) origin pattern in Chrome. Reload open tabs after changing this.</em></span></label>
+          </details>
+        </section>
+      </section>
+
+      <section id="details-section" class="tab-section" aria-label="CORS details">
+        <div id="details-tabs" class="tabs" role="tablist" aria-label="CORS details views">
+          <button id="tab-current" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-current">Requests <span id="current-count" class="tab-count">0</span></button>
+          <button id="tab-rules" class="tab is-active" type="button" role="tab" aria-selected="true" aria-controls="panel-rules">Rules <span id="rules-count" class="tab-count">0</span></button>
+          <button id="tab-backup" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-backup">Import/Export</button>
+        </div>
+        <section id="panel-current" class="tab-panel" role="tabpanel" aria-labelledby="tab-current" hidden>
+          <div id="current-panel-title-row" class="panel-title-row"><div><h2>Observed requests</h2><p id="request-scope-help" class="help">Direct and indirect requests observed from the inspected page.</p></div><button id="copy-current-links" type="button">Copy visible</button></div>
+          <div id="request-scope-filter" class="request-scope-filter" role="group" aria-label="Request scope">
+            <button class="request-scope-filter__button is-active" data-request-scope="current" type="button">This page <span id="current-request-count" class="tab-count">0</span></button>
+            <button class="request-scope-filter__button" data-request-scope="other" type="button">Other tabs <span id="other-count" class="tab-count">0</span></button>
+          </div>
+          <label class="link-filter" for="current-link-filter-input">Filter requests</label>
+          <div id="current-link-filter-row" class="link-filter-row"><input id="current-link-filter-input" class="link-filter__input" type="search" placeholder="Search observed request URLs" autocomplete="off" /><button id="clear-current-link-filter" class="icon-button" type="button" aria-label="Clear request filter" title="Clear filter">×</button></div>
+          <ul id="current-links" class="link-list"></ul>
+        </section>
+        <section id="panel-rules" class="tab-panel is-visible" role="tabpanel" aria-labelledby="tab-rules">
+          <h2>Active and skipped rules</h2>
+          <p id="rules-status" class="help"></p>
+          <p class="help pattern-note">Supported: https://api.example.com, https://*.example.com, *://api.example.com/*, and https://api.example.com/v1/*.</p>
+          <details id="rule-defaults" class="advanced-options rule-defaults">
+            <summary>Rule defaults</summary>
+            <fieldset id="methods-section" class="methods configuration-card__methods">
+              <legend>Default CORS methods</legend>
+              <p class="methods-help">Methods returned in Access-Control-Allow-Methods unless a rule has a custom selection.</p>
+              <div class="methods-bulk-actions"><button id="select-all-methods" class="secondary-button" type="button">Select all</button><button id="select-default-methods" class="secondary-button" type="button">Reset to defaults</button></div>
+              <label><input class="allow-method" type="checkbox" value="GET" /> GET</label>
+              <label><input class="allow-method" type="checkbox" value="POST" /> POST</label>
+              <label><input class="allow-method" type="checkbox" value="PUT" /> PUT</label>
+              <label><input class="allow-method" type="checkbox" value="PATCH" /> PATCH</label>
+              <label><input class="allow-method" type="checkbox" value="DELETE" /> DELETE</label>
+              <label><input class="allow-method" type="checkbox" value="OPTIONS" /> OPTIONS</label>
+              <label><input class="allow-method" type="checkbox" value="HEAD" /> HEAD</label>
+              <p id="methods-error" class="field-error" role="alert"></p>
+            </fieldset>
+          </details>
+          <div id="rule-heading" class="rule-heading"><h3>Rules</h3><span id="rule-actions" class="rule-actions"><button id="add-active-rule" type="button">Add active URL</button><button id="add-skip-rule" type="button">Add skip URL</button><button id="add-domain-rule" type="button">Add domain rule</button></span></div>
+          <p class="help">Domain rules apply to first-party requests, third-party requests, or both. Reload open tabs after adding one.</p>
+          <p id="rules-error" class="field-error" role="alert"></p>
+          <label class="link-filter" for="rules-filter-input">Filter rules</label>
+          <div id="rules-filter-row" class="link-filter-row"><input id="rules-filter-input" class="link-filter__input" type="search" placeholder="Search active, skipped, domain, or method rules" autocomplete="off" /><button id="clear-rules-filter" class="icon-button" type="button" aria-label="Clear rules filter" title="Clear filter">×</button></div>
+          <div id="rule-state-filter" class="rule-filter" role="group" aria-label="Filter rules">
+            <button class="rule-filter__button is-active" data-rule-filter="all" type="button">All</button>
+            <button class="rule-filter__button" data-rule-filter="active" type="button">Active</button>
+            <button class="rule-filter__button" data-rule-filter="skip" type="button">Skipped</button>
+          </div>
+          <div id="rule-list-wrap" class="rule-list-wrap">
+            <ul id="rules-list" class="rule-list"></ul>
+          </div>
+        </section>
+
+        <section id="panel-backup" class="tab-panel" role="tabpanel" aria-labelledby="tab-backup" hidden>
+          <h2>Import/Export rules</h2>
+          <p class="help">Export includes active rules, skipped rules, domain rules, method overrides, header settings, and credential settings.</p>
+          <p class="help">Import replaces those rule and CORS response settings from the selected file. Enabled state, mode, and theme stay unchanged.</p>
+          <div id="backup-actions" class="backup-actions">
+            <button id="export-rules" type="button">Export rules</button>
+            <button id="import-rules" type="button">Import rules</button>
+            <input id="import-rules-file" type="file" accept="application/json,.json" hidden />
+          </div>
+          <div id="import-preview" class="import-preview" hidden>
+            <h3>Import preview</h3>
+            <div id="import-preview-summary" class="import-preview-summary"></div>
+            <div class="backup-actions">
+              <button id="confirm-import-rules" type="button">Apply import</button>
+              <button id="cancel-import-rules" class="secondary-button" type="button">Cancel</button>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>

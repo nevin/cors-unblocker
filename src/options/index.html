@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CORS Settings</title>
+    <link rel="stylesheet" href="shared.css" />
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <header>
+        <p>CORS</p>
+        <h1>Settings</h1>
+        <p class="subtitle">Choose where CORS response headers are relaxed and which requests are excluded.</p>
+      </header>
+
+      <section class="setting-section behavior-section">
+        <div class="section-heading"><div><h2>Behavior</h2><p class="section-help">Control when the extension modifies responses.</p></div><p id="settings-status" class="settings-status" aria-live="polite"></p></div>
+        <label class="setting-toggle"><input id="enabled" type="checkbox" /><span><strong>Enable CORS overrides</strong><small>Apply the rules below to matching requests.</small></span></label>
+        <fieldset class="mode-options">
+          <legend>Scope</legend>
+          <label><input type="radio" name="mode" value="whitelist" /> <span><strong>Whitelist</strong><small>Only active rules</small></span></label>
+          <label><input type="radio" name="mode" value="global" /> <span><strong>Global</strong><small>All websites</small></span></label>
+        </fieldset>
+        <p id="global-mode-warning" class="global-mode-warning" role="alert" hidden>Global mode relaxes CORS headers for every website, not just your active rules. Switch to Whitelist when you are done debugging.</p>
+      </section>
+
+      <section class="setting-section">
+        <h2>Default CORS methods</h2>
+        <p class="section-help">Methods returned in Access-Control-Allow-Methods unless a pattern has a custom selection.</p>
+
+        <fieldset class="methods">
+        <legend>Method values</legend>
+        <p class="section-help">These values shape the preflight response; the extension does not block matching requests.</p>
+        <div class="methods-bulk-actions"><button id="select-all-methods" class="secondary-button" type="button">Select all</button><button id="select-default-methods" class="secondary-button" type="button">Reset to defaults</button></div>
+        <label><input class="allow-method" type="checkbox" value="GET" /> GET</label>
+        <label><input class="allow-method" type="checkbox" value="POST" /> POST</label>
+        <label><input class="allow-method" type="checkbox" value="PUT" /> PUT</label>
+        <label><input class="allow-method" type="checkbox" value="PATCH" /> PATCH</label>
+        <label><input class="allow-method" type="checkbox" value="DELETE" /> DELETE</label>
+        <label><input class="allow-method" type="checkbox" value="OPTIONS" /> OPTIONS</label>
+        <label><input class="allow-method" type="checkbox" value="HEAD" /> HEAD</label>
+        </fieldset>
+      </section>
+
+      <details class="setting-section advanced-options">
+        <summary class="section-summary"><span>Headers &amp; credentials</span></summary>
+        <p class="section-help">Advanced response header behavior, separate from the allowed methods above.</p>
+        <label class="header-option"><input id="allow-all-headers" type="checkbox" /> <span><strong>Allow all request headers</strong><small>Sets Access-Control-Allow-Headers to *</small><em id="headers-warning" hidden>Wildcard headers may not work with credentialed requests.</em></span></label>
+        <label class="header-option"><input id="allow-credentials" type="checkbox" /> <span><strong>Allow credentials</strong><small>Sets Allow-Credentials to true and uses the initiator origin.</small><em id="credentials-hint">Use an explicit http(s) origin pattern in Chrome. Reload open tabs after changing this.</em></span></label>
+      </details>
+
+      <section class="setting-section">
+        <div class="section-heading"><div><h2>Appearance</h2><p class="section-help">Choose the theme for every plugin page.</p></div><label class="theme-control" for="theme">Theme
+          <select id="theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+        </label></div>
+      </section>
+
+      <section class="setting-section">
+        <h2>Active rules</h2>
+        <form id="form" class="editor">
+          <label for="pattern">Add a URL or pattern</label>
+          <p class="section-help pattern-note">Supported: exact hosts, wildcard subdomains, wildcard schemes, and path patterns ending in /*.</p>
+          <div class="row">
+            <input id="pattern" type="text" placeholder="https://api.local.test or *.example.dev" autocomplete="off" />
+            <button type="submit">Add</button>
+          </div>
+          <p id="message" class="message" role="status"></p>
+        </form>
+        <p id="count" class="summary" aria-live="polite"></p>
+        <ul id="list" class="list"></ul>
+      </section>
+
+      <details class="setting-section request-section" open>
+        <summary class="section-summary"><span>Discovered requests</span></summary>
+        <p class="section-help">URLs recently called by web pages. Edit a URL, then add it to the enabled or skip list.</p>
+        <ul id="discovered-list" class="list"></ul>
+      </details>
+
+      <section class="setting-section">
+        <h2>Skip rules</h2>
+        <p class="section-help">Matching requests keep their original CORS headers.</p>
+        <ul id="skip-list" class="list"></ul>
+      </section>
+
+      <details class="setting-section rules-backup" open>
+        <summary class="section-summary"><span>Import/Export rules</span></summary>
+        <p class="section-help">Export your rules to JSON or preview an import before replacing current rule and CORS response settings.</p>
+        <div class="backup-actions">
+          <button id="export-rules" type="button">Export rules</button>
+          <button id="import-rules" type="button">Import rules</button>
+          <input id="import-rules-file" type="file" accept="application/json,.json" hidden />
+        </div>
+        <div id="import-preview" class="import-preview" hidden>
+          <h3>Import preview</h3>
+          <div id="import-preview-summary" class="import-preview-summary"></div>
+          <div class="backup-actions">
+            <button id="confirm-import-rules" type="button">Apply import</button>
+            <button id="cancel-import-rules" class="secondary-button" type="button">Cancel</button>
+          </div>
+        </div>
+      </details>
+
+      <section class="setting-section danger-zone">
+        <div>
+          <h2>Danger zone</h2>
+          <p class="section-help">Reset every rule, method override, and display preference.</p>
+        </div>
+        <button id="reset" class="danger-button" type="button">Reset all settings</button>
+      </section>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>
