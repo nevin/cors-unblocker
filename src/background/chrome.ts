@@ -1,5 +1,5 @@
 import { loadSettings, onSettingsChanged, recordDiscoveredRequest } from '../shared/browserApi';
-import { ExtensionSettings, getActivePatterns, getPatternHost, isCredentialsSupported } from '../shared/settings';
+import { ExtensionSettings, getActivePatterns, getPatternHost, isCredentialsSupported, toUrlPatternRegExpSource } from '../shared/settings';
 
 const TARGET_RULE_ID_BASE = 10_000;
 const INITIATOR_RULE_ID_BASE = 20_000;
@@ -113,7 +113,7 @@ function createTargetRule(pattern: string, index: number, excludedDomains: strin
       responseHeaders
     },
     condition: {
-      urlFilter: toDnrUrlFilter(pattern),
+      ...toDnrUrlCondition(pattern),
       ...(excludedDomains.length > 0 ? { excludedRequestDomains: excludedDomains } : {}),
       ...(excludedDomains.length > 0 ? { excludedInitiatorDomains: excludedDomains } : {}),
       resourceTypes: RESOURCE_TYPES
@@ -161,19 +161,13 @@ function getPatternOrigin(pattern: string): string | null {
   return match?.[1] && match[2] ? `${match[1]}://${match[2]}` : null;
 }
 
-function toDnrUrlFilter(pattern: string): string {
+// Uses the same regex as the shared matcher so Chrome and Firefox agree on what a pattern covers.
+function toDnrUrlCondition(pattern: string): Pick<chrome.declarativeNetRequest.RuleCondition, 'urlFilter' | 'regexFilter' | 'isUrlFilterCaseSensitive'> {
   if (pattern === '<all_urls>') {
-    return '|http';
+    return { urlFilter: '|http' };
   }
 
-  const match = /^(?:\*|https?):\/\/([^/]+)(\/.*)?$/.exec(pattern);
-  if (!match?.[1]) {
-    return pattern;
-  }
-
-  const host = match[1].replace(/^\*\./, '');
-  const path = match[2]?.endsWith('/*') ? match[2].slice(0, -2) : match[2] ?? '';
-  return `||${host}${path}`;
+  return { regexFilter: toUrlPatternRegExpSource(pattern), isUrlFilterCaseSensitive: true };
 }
 
 function toInitiatorDomain(pattern: string): string | null {

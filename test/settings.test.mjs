@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { getAllowedMethodsForRequest, getEffectiveCorsRuleForRequest, getPatternHost, isCorsEnabledForRequest, isRequestMethodAllowed, mergeSettings, normalizeMethodOverridePattern, normalizePattern, normalizePatterns } from '../dist-test/shared/settings.js';
-import { matchesPattern } from '../dist-test/shared/matching.js';
+import { getAllowedMethodsForRequest, getEffectiveCorsRuleForRequest, getPatternHost, isCorsEnabledForRequest, isRequestMethodAllowed, matchesUrlPattern, mergeSettings, normalizeMethodOverridePattern, normalizePattern, normalizePatterns } from '../dist-test/shared/settings.js';
 
 describe('settings pattern normalization', () => {
   it('keeps all urls token', () => {
@@ -41,10 +40,48 @@ describe('settings pattern normalization', () => {
   });
 
   it('matches browser patterns consistently', () => {
-    assert.equal(matchesPattern('https://api.example.dev/v1/users', '*://api.example.dev/*'), true);
-    assert.equal(matchesPattern('https://other.example.dev/v1/users', '*://api.example.dev/*'), false);
-    assert.equal(matchesPattern('http://localhost:3000/data', 'http://localhost:3000/*'), true);
-    assert.equal(matchesPattern('ftp://localhost:3000/data', '<all_urls>'), false);
+    assert.equal(matchesUrlPattern('https://api.example.dev/v1/users', '*://api.example.dev/*'), true);
+    assert.equal(matchesUrlPattern('https://other.example.dev/v1/users', '*://api.example.dev/*'), false);
+    assert.equal(matchesUrlPattern('http://localhost:3000/data', 'http://localhost:3000/*'), true);
+    assert.equal(matchesUrlPattern('ftp://localhost:3000/data', '<all_urls>'), false);
+  });
+
+  it('never lets a host wildcard match text in the path or query', () => {
+    assert.equal(matchesUrlPattern('https://attacker.com/x.example.dev/', '*://*.example.dev/*'), false);
+    assert.equal(matchesUrlPattern('https://attacker.com/?next=a.example.dev/', '*://*.example.dev/*'), false);
+    assert.equal(matchesUrlPattern('https://attacker.com/a.etihad.com/', 'https://www.*.etihad.com/*'), false);
+    assert.equal(matchesUrlPattern('https://evil.com/', '*://*/api/*'), false);
+  });
+
+  it('anchors the end of the host', () => {
+    assert.equal(matchesUrlPattern('https://example.dev.evil.com/', '*://*.example.dev/*'), false);
+    assert.equal(matchesUrlPattern('https://api.example.dev.evil.com/', '*://api.example.dev/*'), false);
+    assert.equal(matchesUrlPattern('http://localhost:30001/', 'http://localhost:3000/*'), false);
+    assert.equal(matchesUrlPattern('https://localhost:3000/', 'http://localhost:3000/*'), false);
+  });
+
+  it('matches subdomains, the bare domain, and any port when none is given', () => {
+    assert.equal(matchesUrlPattern('https://example.dev/', '*://*.example.dev/*'), true);
+    assert.equal(matchesUrlPattern('https://a.b.example.dev/x', '*://*.example.dev/*'), true);
+    assert.equal(matchesUrlPattern('https://api.example.dev:8443/x', '*://api.example.dev/*'), true);
+    assert.equal(matchesUrlPattern('https://www.eu.etihad.com/x', 'https://www.*.etihad.com/*'), true);
+    assert.equal(matchesUrlPattern('https://app.example.dev', 'https://app.example.dev/*'), true);
+  });
+
+  it('respects path boundaries', () => {
+    assert.equal(matchesUrlPattern('https://api.example.dev/api', 'https://api.example.dev/api/*'), true);
+    assert.equal(matchesUrlPattern('https://api.example.dev/api/v1', 'https://api.example.dev/api/*'), true);
+    assert.equal(matchesUrlPattern('https://api.example.dev/apix', 'https://api.example.dev/api/*'), false);
+  });
+
+  it('does not enable CORS for lookalike requests or initiators', () => {
+    const settings = mergeSettings({ enabled: true, whitelist: ['*.example.dev', 'http://localhost:3000'] });
+
+    assert.equal(isCorsEnabledForRequest('https://attacker.com/x.example.dev/', undefined, settings), false);
+    assert.equal(isCorsEnabledForRequest('https://bank.com/api', 'https://attacker.com/a.example.dev/', settings), false);
+    assert.equal(isCorsEnabledForRequest('https://example.dev.evil.com/api', undefined, settings), false);
+    assert.equal(isCorsEnabledForRequest('http://localhost:30001/api', undefined, settings), false);
+    assert.equal(isCorsEnabledForRequest('https://api.backend.test/data', 'http://localhost:3000', settings), true);
   });
 
   it('resolves per-link allowed methods over the global default', () => {

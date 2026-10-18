@@ -315,15 +315,55 @@ function getOrigin(url: string): string | null {
   }
 }
 
-function matchesUrlPattern(url: string, pattern: string): boolean {
-  if (pattern.endsWith('/*') && url === pattern.slice(0, -2)) {
-    return true;
+export function matchesUrlPattern(url: string, pattern: string): boolean {
+  return new RegExp(toUrlPatternRegExpSource(pattern)).test(url);
+}
+
+// Shared by the in-page matcher and Chrome's DNR regexFilter, so keep the output RE2-compatible (no lookarounds).
+// Host wildcards never cross '/', so a host pattern cannot be satisfied by text in the path or query.
+export function toUrlPatternRegExpSource(pattern: string): string {
+  if (pattern === '<all_urls>') {
+    return '^(?:https?|file)://.*$';
   }
 
-  const escaped = pattern
-    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*');
-  return new RegExp(`^${escaped}$`).test(url);
+  const match = /^(\*|https?|file):\/\/([^/]*)(\/.*)?$/.exec(pattern);
+  if (!match) {
+    return `^${escapeRegExp(pattern)}$`;
+  }
+
+  const scheme = match[1] === '*' ? 'https?' : escapeRegExp(match[1] ?? '');
+  return `^${scheme}://${toHostRegExpSource(match[2] ?? '')}${toPathRegExpSource(match[3] ?? '')}$`;
+}
+
+function toHostRegExpSource(host: string): string {
+  if (host === '*') {
+    return '[^/]*';
+  }
+
+  const hasPort = /:\d+$/.test(host);
+  const subdomainPrefix = host.startsWith('*.') ? '(?:[^/:]+\\.)?' : '';
+  const hostBody = (subdomainPrefix ? host.slice(2) : host)
+    .split('*')
+    .map(escapeRegExp)
+    .join('[^/:]*');
+
+  // Like browser match patterns, a host without an explicit port matches any port.
+  return `${subdomainPrefix}${hostBody}${hasPort ? '' : '(?::\\d+)?'}`;
+}
+
+function toPathRegExpSource(path: string): string {
+  const toWildcardSource = (value: string) => value.split('*').map(escapeRegExp).join('.*');
+
+  // 'https://host/api/*' covers '/api' itself as well as everything below it, but not '/apiX'.
+  if (path.endsWith('/*')) {
+    return `${toWildcardSource(path.slice(0, -2))}(?:/.*)?`;
+  }
+
+  return toWildcardSource(path);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export function getPatternHost(pattern: string): string | null {
