@@ -6,7 +6,7 @@ import {
   onDiscoveredRequestsChanged,
   resetSettings
 } from '../shared/browserApi';
-import { DEFAULT_ALLOW_METHODS, CorsMode, ExtensionSettings, exportRules, importRules, isCredentialsSupported, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
+import { DEFAULT_ALLOW_METHODS, CorsMode, ExtensionSettings, exportRules, getTrustPatternForRequest, importRules, isCredentialsSupported, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
 import { applyTheme } from '../shared/theme';
 
 const form = document.querySelector<HTMLFormElement>('#form');
@@ -423,7 +423,7 @@ function renderPatternList(target: HTMLUListElement | null, patterns: string[], 
     item.className = 'empty';
     title.textContent = kind === 'enabled' ? 'No active rules yet.' : 'No skip rules yet.';
     description.textContent = kind === 'enabled'
-      ? 'Add a URL or pattern above so this extension relaxes CORS headers for it.'
+      ? 'Add the page you are developing above so requests it makes get relaxed CORS headers.'
       : 'Patterns added here keep their original CORS headers even when the rest of the site is active.';
     item.append(title, description);
     if (kind === 'enabled') {
@@ -462,7 +462,14 @@ function renderPatternList(target: HTMLUListElement | null, patterns: string[], 
     actions.className = 'item-actions';
     actions.append(editButton, removeButton);
 
-    item.append(code, createMethodEditor(pattern), feedback, actions);
+    if (kind === 'enabled') {
+      const ruleOptions = document.createElement('span');
+      ruleOptions.className = 'rule-options';
+      ruleOptions.append(createMethodEditor(pattern), createAnyOriginToggle(pattern));
+      item.append(code, ruleOptions, feedback, actions);
+    } else {
+      item.append(code, createMethodEditor(pattern), feedback, actions);
+    }
     target.append(item);
   });
 }
@@ -510,9 +517,10 @@ function renderDiscoveredRequests(): void {
     enableButton.type = 'button';
     enableButton.className = 'icon-button';
     enableButton.textContent = '✓';
-    enableButton.setAttribute('aria-label', `Enable ${request.url}`);
-    enableButton.title = 'Add to active rules';
-    enableButton.addEventListener('click', () => void addDiscoveredPattern(request.url, 'enabled', feedback));
+    const trustPattern = getTrustPatternForRequest(request.url, request.initiator) ?? request.url;
+    enableButton.setAttribute('aria-label', `Allow requests from ${trustPattern}`);
+    enableButton.title = `Allow requests from ${trustPattern}`;
+    enableButton.addEventListener('click', () => void addDiscoveredPattern(trustPattern, 'enabled', feedback));
     skipButton.type = 'button';
     skipButton.className = 'icon-button danger-button';
     skipButton.textContent = '−';
@@ -572,6 +580,40 @@ function createMethodEditor(patternInput: string): HTMLDetailsElement {
 
   details.append(summary, options);
   return details;
+}
+
+function createAnyOriginToggle(pattern: string): HTMLLabelElement {
+  const label = document.createElement('label');
+  const checkbox = document.createElement('input');
+  const text = document.createElement('span');
+  const enabled = settings.anyOriginTargets.includes(pattern);
+
+  label.className = 'any-origin-toggle';
+  label.dataset.enabled = String(enabled);
+  label.title = 'Off: only requests made by this page are relaxed. On: any website can also read responses from this pattern.';
+  checkbox.type = 'checkbox';
+  checkbox.checked = enabled;
+  checkbox.addEventListener('change', () => void updateAnyOriginTarget(pattern, checkbox.checked));
+  text.textContent = enabled ? 'Any site may read (⚠ every website can read these responses)' : 'Any site may read';
+  label.append(checkbox, text);
+  return label;
+}
+
+async function updateAnyOriginTarget(pattern: string, enabled: boolean): Promise<void> {
+  setBusy(true);
+  try {
+    settings = await settingsController.update({
+      anyOriginTargets: enabled
+        ? [...new Set([...settings.anyOriginTargets, pattern])]
+        : settings.anyOriginTargets.filter((target) => target !== pattern)
+    });
+    setMessage(enabled ? 'Any website can now read responses from this pattern.' : 'Only requests made by this page are relaxed.', false);
+    render();
+  } catch {
+    setMessage('Unable to update who may read this pattern.', true);
+  } finally {
+    setBusy(false);
+  }
 }
 
 async function updatePatternMethods(pattern: string, methods: string[]): Promise<void> {

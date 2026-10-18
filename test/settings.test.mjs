@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { getAllowedMethodsForRequest, getEffectiveCorsRuleForRequest, getPatternHost, isCorsEnabledForRequest, isRequestMethodAllowed, matchesUrlPattern, mergeSettings, normalizeMethodOverridePattern, normalizePattern, normalizePatterns } from '../dist-test/shared/settings.js';
+import { exportRules, getAllowedMethodsForRequest, getEffectiveCorsRuleForRequest, getPatternHost, getTrustPatternForRequest, importRules, isCorsEnabledForRequest, isRequestMethodAllowed, matchesUrlPattern, mergeSettings, normalizeMethodOverridePattern, normalizePattern, normalizePatterns } from '../dist-test/shared/settings.js';
 
 describe('settings pattern normalization', () => {
   it('keeps all urls token', () => {
@@ -129,14 +129,14 @@ describe('settings pattern normalization', () => {
   });
 
   it('matches an exact selected URL and descendants', () => {
-    const settings = mergeSettings({ enabled: true, whitelist: ['https://api.example.dev/api/data'] });
+    const settings = mergeSettings({ enabled: true, whitelist: ['https://api.example.dev/api/data'], anyOriginTargets: ['https://api.example.dev/api/data'] });
 
     assert.equal(isCorsEnabledForRequest('https://api.example.dev/api/data', undefined, settings), true);
     assert.equal(isCorsEnabledForRequest('https://api.example.dev/api/data/details', undefined, settings), true);
   });
 
   it('enforces selected methods for matching requests', () => {
-    const settings = mergeSettings({ enabled: true, whitelist: ['api.example.dev'], allowMethods: ['HEAD'] });
+    const settings = mergeSettings({ enabled: true, whitelist: ['api.example.dev'], allowMethods: ['HEAD'], anyOriginTargets: ['api.example.dev'] });
 
     assert.equal(isRequestMethodAllowed('HEAD', 'https://api.example.dev/data', undefined, settings), true);
     assert.equal(isRequestMethodAllowed('GET', 'https://api.example.dev/data', undefined, settings), false);
@@ -155,7 +155,7 @@ describe('settings pattern normalization', () => {
   });
 
   it('matches domain rules by first-party and third-party scope', () => {
-    const firstParty = mergeSettings({ enabled: true, domainRules: [{ pattern: 'https://app.example.dev', type: 'first_party' }] });
+    const firstParty = mergeSettings({ enabled: true, domainRules: [{ pattern: 'https://app.example.dev', type: 'first_party' }], anyOriginTargets: ['https://app.example.dev'] });
     const thirdParty = mergeSettings({ enabled: true, domainRules: [{ pattern: 'https://app.example.dev', type: 'third_party' }] });
 
     assert.equal(isCorsEnabledForRequest('https://app.example.dev/page', 'https://other.example.dev/', firstParty), true);
@@ -195,7 +195,8 @@ describe('settings pattern normalization', () => {
       enabled: true,
       mode: 'whitelist',
       whitelist: ['api.example.dev'],
-      domainRules: [{ pattern: 'api.example.dev', type: 'first_party' }]
+      domainRules: [{ pattern: 'api.example.dev', type: 'first_party' }],
+      anyOriginTargets: ['api.example.dev']
     });
 
     assert.equal(isCorsEnabledForRequest('https://api.example.dev/data', 'https://other.example.dev/', settings), true);
@@ -226,12 +227,12 @@ describe('settings pattern normalization', () => {
     );
 
     assert.deepEqual(
-      getEffectiveCorsRuleForRequest('https://api.example.dev/private/data', 'https://app.example.dev/', mergeSettings({ enabled: true, whitelist: ['api.example.dev', 'https://api.example.dev/private/*'] })),
+      getEffectiveCorsRuleForRequest('https://api.example.dev/private/data', 'https://app.example.dev/', mergeSettings({ enabled: true, whitelist: ['api.example.dev', 'https://api.example.dev/private/*'], anyOriginTargets: ['api.example.dev', 'https://api.example.dev/private/*'] })),
       { state: 'active', source: 'pattern', pattern: 'https://api.example.dev/private/*' }
     );
 
     assert.deepEqual(
-      getEffectiveCorsRuleForRequest('https://api.example.dev/data', 'https://app.example.dev/', mergeSettings({ enabled: true, domainRules: [{ pattern: 'api.example.dev', type: 'first_party' }] })),
+      getEffectiveCorsRuleForRequest('https://api.example.dev/data', 'https://app.example.dev/', mergeSettings({ enabled: true, domainRules: [{ pattern: 'api.example.dev', type: 'first_party' }], anyOriginTargets: ['api.example.dev'] })),
       { state: 'active', source: 'domain', pattern: '*://api.example.dev/*', domainType: 'first_party' }
     );
 
@@ -239,5 +240,79 @@ describe('settings pattern normalization', () => {
       getEffectiveCorsRuleForRequest('https://api.example.dev/data', 'https://app.example.dev/', mergeSettings({ enabled: true, mode: 'global', skiplist: ['api.example.dev'] })),
       { state: 'skipped', source: 'skip', pattern: '*://api.example.dev/*' }
     );
+  });
+
+  it('relaxes requests made by a trusted page, whatever they call', () => {
+    const settings = mergeSettings({ enabled: true, whitelist: ['http://localhost:3000'] });
+
+    assert.equal(isCorsEnabledForRequest('https://api.staging.dev/users', 'http://localhost:3000', settings), true);
+    assert.equal(isCorsEnabledForRequest('https://other.api.dev/data', 'http://localhost:3000/app', settings), true);
+    assert.deepEqual(
+      getEffectiveCorsRuleForRequest('https://api.staging.dev/users', 'http://localhost:3000', settings),
+      { state: 'active', source: 'pattern', pattern: 'http://localhost:3000/*' }
+    );
+  });
+
+  it('does not open a rule target to other sites by default', () => {
+    const settings = mergeSettings({
+      enabled: true,
+      whitelist: ['api.staging.dev'],
+      domainRules: [{ pattern: 'api.domain.dev', type: 'both' }, { pattern: 'api.first.dev', type: 'first_party' }]
+    });
+
+    assert.equal(isCorsEnabledForRequest('https://api.staging.dev/users', 'https://evil.com', settings), false);
+    assert.equal(isCorsEnabledForRequest('https://api.domain.dev/users', 'https://evil.com', settings), false);
+    assert.equal(isCorsEnabledForRequest('https://api.first.dev/users', 'https://evil.com', settings), false);
+    assert.equal(isCorsEnabledForRequest('https://api.staging.dev/users', undefined, settings), false);
+    assert.deepEqual(getEffectiveCorsRuleForRequest('https://api.staging.dev/users', 'https://evil.com', settings), { state: 'inactive', source: 'none' });
+  });
+
+  it('opens a rule target to any site only when opted in', () => {
+    const settings = mergeSettings({
+      enabled: true,
+      whitelist: ['api.staging.dev', 'api.closed.dev'],
+      domainRules: [{ pattern: 'api.first.dev', type: 'first_party' }],
+      anyOriginTargets: ['api.staging.dev', 'api.first.dev']
+    });
+
+    assert.equal(isCorsEnabledForRequest('https://api.staging.dev/users', 'https://evil.com', settings), true);
+    assert.equal(isCorsEnabledForRequest('https://api.first.dev/users', 'https://evil.com', settings), true);
+    assert.equal(isCorsEnabledForRequest('https://api.closed.dev/users', 'https://evil.com', settings), false);
+  });
+
+  it('keeps global mode open to every site', () => {
+    const settings = mergeSettings({ enabled: true, mode: 'global' });
+
+    assert.equal(isCorsEnabledForRequest('https://api.staging.dev/users', 'https://evil.com', settings), true);
+  });
+
+  it('migrates rules without an opt-in to the scoped default', () => {
+    const settings = mergeSettings({ enabled: true, whitelist: ['api.staging.dev'] });
+
+    assert.deepEqual(settings.anyOriginTargets, []);
+    assert.equal(isCorsEnabledForRequest('https://api.staging.dev/users', 'https://evil.com', settings), false);
+  });
+
+  it('drops opt-ins for rules that no longer exist', () => {
+    const settings = mergeSettings({
+      whitelist: ['api.staging.dev'],
+      domainRules: [{ pattern: 'api.domain.dev', type: 'both' }],
+      anyOriginTargets: ['api.staging.dev', 'api.domain.dev', 'api.removed.dev', 'not a pattern ::']
+    });
+
+    assert.deepEqual(settings.anyOriginTargets, ['*://api.staging.dev/*', '*://api.domain.dev/*']);
+  });
+
+  it('round-trips opt-ins through rule export and import', () => {
+    const settings = mergeSettings({ whitelist: ['api.staging.dev'], anyOriginTargets: ['api.staging.dev'] });
+    const imported = mergeSettings(importRules(exportRules(settings)));
+
+    assert.deepEqual(imported.anyOriginTargets, ['*://api.staging.dev/*']);
+  });
+
+  it('suggests trusting the page that made a request', () => {
+    assert.equal(getTrustPatternForRequest('https://api.staging.dev/users', 'http://localhost:3000/app/page'), 'http://localhost:3000/*');
+    assert.equal(getTrustPatternForRequest('https://api.staging.dev/users', null), 'https://api.staging.dev/users/*');
+    assert.equal(getTrustPatternForRequest('https://api.staging.dev/users', 'chrome-extension://abc'), 'https://api.staging.dev/users/*');
   });
 });

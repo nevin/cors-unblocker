@@ -1,5 +1,5 @@
 import { clearPersistedRequestLog, loadSettings, onSettingsChanged, recordDiscoveredRequest } from '../shared/browserApi';
-import { ExtensionSettings, getActivePatterns, getPatternHost, isCredentialsSupported, toUrlPatternRegExpSource } from '../shared/settings';
+import { ExtensionSettings, getActivePatterns, getPatternHost, isAnyOriginTarget, isCredentialsSupported, toUrlPatternRegExpSource } from '../shared/settings';
 
 const TARGET_RULE_ID_BASE = 10_000;
 const INITIATOR_RULE_ID_BASE = 20_000;
@@ -99,7 +99,10 @@ function createRules(pattern: string, index: number, settings: ExtensionSettings
   const rules: chrome.declarativeNetRequest.Rule[] = [];
   const initiatorDomain = toInitiatorDomain(pattern);
   const domainRuleType = isIndividualPattern ? 'both' : settings.domainRules.find((rule) => rule.pattern === pattern)?.type ?? 'both';
-  if (!credentialsActive && domainRuleType !== 'third_party') {
+  // Target rules relax this pattern's responses for every site, so they need the rule's explicit opt-in.
+  // Global mode is the one exception: it already applies to every site by definition.
+  const anyOrigin = pattern === '<all_urls>' || isAnyOriginTarget(pattern, settings);
+  if (anyOrigin && !credentialsActive && domainRuleType !== 'third_party') {
     rules.push(createTargetRule(pattern, index, excludedDomains, responseHeaders, priority));
   }
 

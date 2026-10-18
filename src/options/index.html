@@ -61,6 +61,7 @@
         <h2>Active rules</h2>
         <form id="form" class="editor">
           <label for="pattern">Add a URL or pattern</label>
+          <p class="section-help">Add the page you are developing, such as http://localhost:3000. Its requests to any API get relaxed CORS headers. Other websites are not affected unless you turn on "Any site may read" for a rule.</p>
           <p class="section-help pattern-note">Supported: exact hosts, wildcard subdomains, wildcard schemes, and path patterns ending in /*.</p>
           <div class="row">
             <input id="pattern" type="text" placeholder="https://api.local.test or *.example.dev" autocomplete="off" />
@@ -74,7 +75,7 @@
 
       <details class="setting-section request-section" open>
         <summary class="section-summary"><span>Discovered requests</span></summary>
-        <p class="section-help">URLs recently called by web pages. Edit a URL, then add it to the enabled or skip list.</p>
+        <p class="section-help">URLs recently called by web pages while overrides are enabled. ✓ trusts the page that made the request; − skips the URL.</p>
         <ul id="discovered-list" class="list"></ul>
       </details>
 

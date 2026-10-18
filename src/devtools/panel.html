@@ -93,7 +93,7 @@
             </fieldset>
           </details>
           <div id="rule-heading" class="rule-heading"><h3>Rules</h3><span id="rule-actions" class="rule-actions"><button id="add-active-rule" type="button">Add active URL</button><button id="add-skip-rule" type="button">Add skip URL</button><button id="add-domain-rule" type="button">Add domain rule</button></span></div>
-          <p class="help">Domain rules apply to first-party requests, third-party requests, or both. Reload open tabs after adding one.</p>
+          <p class="help">Rules trust the pages they match: requests those pages make get relaxed CORS. First-party domain rules only cover the domain's own responses, so they need "Any site may read". Reload open tabs after adding one.</p>
           <p id="rules-error" class="field-error" role="alert"></p>
           <label class="link-filter" for="rules-filter-input">Filter rules</label>
           <div id="rules-filter-row" class="link-filter-row"><input id="rules-filter-input" class="link-filter__input" type="search" placeholder="Search active, skipped, domain, or method rules" autocomplete="off" /><button id="clear-rules-filter" class="icon-button" type="button" aria-label="Clear rules filter" title="Clear filter">×</button></div>

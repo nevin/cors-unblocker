@@ -4,7 +4,7 @@ type StorageChangeHandler = (settings: ExtensionSettings) => void;
 export type SettingsListener = (settings: ExtensionSettings) => void;
 
 const runtimeApi = globalThis.browser ?? globalThis.chrome;
-const SETTINGS_FIELDS = ['enabled', 'mode', 'whitelist', 'skiplist', 'allowMethods', 'methodOverrides', 'theme', 'allowAllHeaders', 'allowCredentials', 'domainRules'] as const;
+const SETTINGS_FIELDS = ['enabled', 'mode', 'whitelist', 'skiplist', 'allowMethods', 'methodOverrides', 'theme', 'allowAllHeaders', 'allowCredentials', 'domainRules', 'anyOriginTargets'] as const;
 
 type StoredSettings = Partial<ExtensionSettings> & {
   [SETTINGS_KEY]?: Partial<ExtensionSettings>;
@@ -45,6 +45,9 @@ export async function loadSettings(): Promise<ExtensionSettings> {
   if (stored.domainRules !== undefined) {
     fieldSettings.domainRules = stored.domainRules;
   }
+  if (stored.anyOriginTargets !== undefined) {
+    fieldSettings.anyOriginTargets = stored.anyOriginTargets;
+  }
 
   return mergeSettings({ ...legacySettings, ...fieldSettings });
 }
@@ -63,6 +66,7 @@ export async function saveSettings(settings: ExtensionSettings): Promise<void> {
     ,allowAllHeaders: normalized.allowAllHeaders
     ,allowCredentials: normalized.allowCredentials
     ,domainRules: normalized.domainRules
+    ,anyOriginTargets: normalized.anyOriginTargets
   });
 }
 
@@ -99,6 +103,10 @@ export async function updateSettings(next: Partial<ExtensionSettings>): Promise<
   }
   if (next.domainRules !== undefined) {
     changedFields.domainRules = settings.domainRules;
+  }
+  // Rule edits can drop opt-ins for removed patterns, so persist the list whenever rules change.
+  if (next.anyOriginTargets !== undefined || next.whitelist !== undefined || next.domainRules !== undefined) {
+    changedFields.anyOriginTargets = settings.anyOriginTargets;
   }
 
   await runtimeApi.storage.local.set(changedFields);

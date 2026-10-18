@@ -6,7 +6,7 @@ import {
   onDiscoveredRequestsChanged,
   toLoggedUrl
 } from '../shared/browserApi';
-import { DEFAULT_ALLOW_METHODS, CorsMode, DomainRuleType, EffectiveCorsRule, ExtensionSettings, exportRules, getAllowedMethodsForRequest, getEffectiveCorsRuleForRequest, importRules, isCorsEnabledForRequest, isCorsSkippedForRequest, isCredentialsSupported, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
+import { DEFAULT_ALLOW_METHODS, CorsMode, DomainRuleType, EffectiveCorsRule, ExtensionSettings, exportRules, getAllowedMethodsForRequest, getEffectiveCorsRuleForRequest, getTrustPatternForRequest, importRules, isCorsEnabledForRequest, isCorsSkippedForRequest, isCredentialsSupported, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
 import { applyTheme } from '../shared/theme';
 
 type RuleEntry = { pattern: string; kind: 'url' | 'domain'; list: 'active' | 'skip'; domainType?: DomainRuleType };
@@ -345,8 +345,17 @@ function renderRuleItem(target: HTMLUListElement, entry: RuleEntry): void {
   if (entry.kind === 'domain' && entry.domainType) {
     appendRuleBadge(meta, entry.domainType.replace('_', '-'));
   }
+  const anyOrigin = settings.anyOriginTargets.includes(pattern);
+  if (anyOrigin) {
+    appendRuleBadge(meta, 'Any site may read', 'warning');
+  } else if (entry.kind === 'domain' && entry.domainType === 'first_party') {
+    appendRuleBadge(meta, 'No effect until any site may read', 'warning');
+  }
   appendRuleBadge(meta, override ? 'Custom methods' : 'Default methods', override ? 'custom' : undefined);
   meta.append(document.createTextNode((override ?? settings.allowMethods).join(', ')));
+  if (entry.list === 'active' && pattern !== '<all_urls>') {
+    meta.append(createAnyOriginToggle(pattern, anyOrigin));
+  }
   item.className = 'rule-item';
   controls.className = 'rule-controls';
   if (entry.kind === 'url' && pattern !== '<all_urls>') {
@@ -395,6 +404,25 @@ function renderRuleItem(target: HTMLUListElement, entry: RuleEntry): void {
   controls.append(listStatus, actions);
   item.append(code, meta, controls);
   target.append(item);
+}
+
+function createAnyOriginToggle(pattern: string, enabled: boolean): HTMLLabelElement {
+  const label = document.createElement('label');
+  const checkbox = document.createElement('input');
+  label.className = 'any-origin-toggle';
+  label.title = 'Off: only requests made by this page are relaxed. On: any website can also read responses from this pattern.';
+  checkbox.type = 'checkbox';
+  checkbox.checked = enabled;
+  checkbox.setAttribute('aria-label', `Let any site read responses from ${pattern}`);
+  checkbox.addEventListener('change', () => {
+    void updateSettings({
+      anyOriginTargets: checkbox.checked
+        ? [...new Set([...settings.anyOriginTargets, pattern])]
+        : settings.anyOriginTargets.filter((target) => target !== pattern)
+    });
+  });
+  label.append(checkbox, 'Any site may read');
+  return label;
 }
 
 function getRuleSourceLabel(entry: RuleEntry): string {
@@ -1021,9 +1049,10 @@ function renderLinkList(target: HTMLUListElement | null, requests: DiscoveredReq
       activeButton.type = 'button';
       activeButton.className = 'icon-button';
       activeButton.textContent = '✓';
-      activeButton.setAttribute('aria-label', `Add ${request.url} to active rules`);
-      activeButton.title = 'Add to active rules';
-      activeButton.addEventListener('click', () => void addRequestPattern(request.url, 'active').then(() => showRowFeedback(feedback, 'Added')));
+      const trustPattern = getTrustPatternForRequest(request.url, request.initiator);
+      activeButton.setAttribute('aria-label', `Allow requests from ${trustPattern ?? request.url}`);
+      activeButton.title = `Allow requests from ${trustPattern ?? request.url}`;
+      activeButton.addEventListener('click', () => void addRequestPattern(trustPattern ?? request.url, 'active').then(() => showRowFeedback(feedback, 'Added')));
       skipButton.type = 'button';
       skipButton.className = 'icon-button';
       skipButton.textContent = '−';

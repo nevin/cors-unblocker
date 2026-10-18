@@ -6,6 +6,20 @@ A browser extension for selectively relaxing CORS response headers during local 
 
 This is a development tool. Keep it disabled when you are not actively debugging local development requests. Prefer whitelist mode over global mode.
 
+## How rules work
+
+A rule trusts the pages it matches. Requests made **by** a trusted page get relaxed CORS headers, whatever API they call:
+
+```text
+Rule: http://localhost:3000
+  localhost:3000 -> api.staging.dev   relaxed
+  evil.com       -> api.staging.dev   untouched
+```
+
+So add the page you are developing, not the API it calls. A rule's own responses are opened to every website only when you turn on **Any site may read** for that rule. Global mode relaxes every request from every site.
+
+In Chrome, a trusted page is matched by domain only, so `http://localhost:3000` also trusts other ports and paths on `localhost`. Firefox matches the full pattern.
+
 ## Features
 
 - Master on/off toggle
@@ -16,7 +30,7 @@ This is a development tool. Keep it disabled when you are not actively debugging
 - Searchable whitelist management
 - CORS controls available in the browser Developer Tools panel
 - Applies to all matched web request types in Chrome and Firefox
-- In whitelist mode, matches both destination URLs and requests initiated by an allowed site
+- In whitelist mode, relaxes requests made by trusted pages; a rule's responses are opened to other sites only with a per-rule opt-in
 - Allowed methods control the CORS preflight response and do not block network requests.
 - Chrome/Edge Manifest V3 build using Declarative Net Request
 - Firefox build using response header interception (Firefox 115 or later)

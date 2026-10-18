@@ -16,6 +16,7 @@ export interface RulesExport {
   methodOverrides: Record<string, string[]>;
   allowAllHeaders: boolean;
   allowCredentials: boolean;
+  anyOriginTargets?: string[];
 }
 
 export interface ExtensionSettings {
@@ -29,6 +30,8 @@ export interface ExtensionSettings {
   allowAllHeaders: boolean;
   allowCredentials: boolean;
   domainRules: DomainRule[];
+  // Rule patterns whose responses are relaxed for requests from any site, not just from trusted pages.
+  anyOriginTargets: string[];
 }
 
 export type EffectiveCorsRule =
@@ -52,6 +55,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   ,allowAllHeaders: false
   ,allowCredentials: false
   ,domainRules: []
+  ,anyOriginTargets: []
 };
 
 export const SETTINGS_KEY = 'corsDevControlSettings';
@@ -150,7 +154,8 @@ export function exportRules(settings: ExtensionSettings): string {
     allowMethods: settings.allowMethods,
     methodOverrides: settings.methodOverrides,
     allowAllHeaders: settings.allowAllHeaders,
-    allowCredentials: settings.allowCredentials
+    allowCredentials: settings.allowCredentials,
+    anyOriginTargets: settings.anyOriginTargets
   };
 
   return `${JSON.stringify(rules, null, 2)}\n`;
@@ -170,8 +175,26 @@ export function importRules(value: string): Partial<ExtensionSettings> {
     allowMethods: Array.isArray(rules.allowMethods) ? rules.allowMethods : DEFAULT_ALLOW_METHODS,
     methodOverrides: rules.methodOverrides && typeof rules.methodOverrides === 'object' ? rules.methodOverrides : {},
     allowAllHeaders: rules.allowAllHeaders === true,
-    allowCredentials: rules.allowCredentials === true
+    allowCredentials: rules.allowCredentials === true,
+    anyOriginTargets: Array.isArray(rules.anyOriginTargets) ? rules.anyOriginTargets : []
   };
+}
+
+// The rule that makes a blocked request work: trust the page that made it, or the URL itself when
+// nothing initiated it (top-level navigations, which CORS does not apply to anyway).
+export function getTrustPatternForRequest(url: string, initiatorUrl: string | null | undefined): string | null {
+  if (initiatorUrl) {
+    try {
+      const initiator = new URL(initiatorUrl);
+      if (ALLOWED_PROTOCOLS.has(initiator.protocol)) {
+        return normalizePattern(`${initiator.origin}/*`);
+      }
+    } catch {
+      // Fall back to the request URL below.
+    }
+  }
+
+  return normalizePattern(url);
 }
 
 export function isValidPattern(input: string): boolean {
@@ -192,7 +215,21 @@ export function mergeSettings(value: Partial<ExtensionSettings> | undefined): Ex
     ,allowAllHeaders: typeof value?.allowAllHeaders === 'boolean' ? value.allowAllHeaders : DEFAULT_SETTINGS.allowAllHeaders
     ,allowCredentials: typeof value?.allowCredentials === 'boolean' ? value.allowCredentials : DEFAULT_SETTINGS.allowCredentials
     ,domainRules: normalizeDomainRules(value?.domainRules)
+    ,anyOriginTargets: normalizeAnyOriginTargets(value)
   };
+}
+
+// Keeps only opt-ins for rules that still exist, so removing or renaming a rule drops its opt-in.
+function normalizeAnyOriginTargets(value: Partial<ExtensionSettings> | undefined): string[] {
+  if (!Array.isArray(value?.anyOriginTargets)) {
+    return [];
+  }
+
+  const rulePatterns = new Set([
+    ...(Array.isArray(value.whitelist) ? normalizeWhitelistPatterns(value.whitelist) : []),
+    ...normalizeDomainRules(value.domainRules).map((rule) => rule.pattern)
+  ]);
+  return normalizePatterns(value.anyOriginTargets).filter((pattern) => rulePatterns.has(pattern));
 }
 
 export function getActivePatterns(settings: ExtensionSettings): string[] {
@@ -216,8 +253,8 @@ export function isCorsEnabledForRequest(url: string, initiatorUrl: string | unde
     return true;
   }
 
-  return settings.whitelist.some((pattern) => matchesRequestPattern(url, initiatorUrl, pattern))
-    || settings.domainRules.some((rule) => matchesDomainRule(url, initiatorUrl, rule));
+  return settings.whitelist.some((pattern) => matchesActiveRule(url, initiatorUrl, pattern, settings))
+    || settings.domainRules.some((rule) => matchesDomainRule(url, initiatorUrl, rule, settings));
 }
 
 export function isCorsSkippedForRequest(url: string, initiatorUrl: string | undefined, settings: ExtensionSettings): boolean {
@@ -238,13 +275,15 @@ export function getEffectiveCorsRuleForRequest(url: string, initiatorUrl: string
     return { state: 'active', source: 'global', pattern: '<all_urls>' };
   }
 
-  const activePattern = findMostSpecificPattern(settings.whitelist, url, initiatorUrl);
+  const activePattern = settings.whitelist
+    .filter((pattern) => matchesActiveRule(url, initiatorUrl, pattern, settings))
+    .sort((left, right) => right.length - left.length)[0];
   if (activePattern) {
     return { state: 'active', source: 'pattern', pattern: activePattern };
   }
 
   const domainRule = settings.domainRules
-    .filter((rule) => matchesDomainRule(url, initiatorUrl, rule))
+    .filter((rule) => matchesDomainRule(url, initiatorUrl, rule, settings))
     .sort((left, right) => right.pattern.length - left.pattern.length)[0];
   if (domainRule) {
     return { state: 'active', source: 'domain', pattern: domainRule.pattern, domainType: domainRule.type };
@@ -283,6 +322,17 @@ export function isCredentialsSupported(settings: ExtensionSettings): boolean {
     .some((pattern) => /^(https?):\/\/[^/*]+\//.test(pattern));
 }
 
+export function isAnyOriginTarget(pattern: string, settings: ExtensionSettings): boolean {
+  return settings.anyOriginTargets.includes(pattern);
+}
+
+// A rule trusts the pages it matches: their requests are relaxed whatever they call. The rule's own
+// responses are relaxed for other sites only when the user opted that rule in to any-origin reads.
+function matchesActiveRule(url: string, initiatorUrl: string | undefined, pattern: string, settings: ExtensionSettings): boolean {
+  return Boolean(initiatorUrl && matchesUrlPattern(initiatorUrl, pattern))
+    || (isAnyOriginTarget(pattern, settings) && matchesUrlPattern(url, pattern));
+}
+
 function matchesRequestPattern(url: string, initiatorUrl: string | undefined, pattern: string): boolean {
   return matchesUrlPattern(url, pattern) || Boolean(initiatorUrl && matchesUrlPattern(initiatorUrl, pattern));
 }
@@ -293,8 +343,8 @@ function findMostSpecificPattern(patterns: string[], url: string, initiatorUrl: 
     .sort((left, right) => right.length - left.length)[0];
 }
 
-function matchesDomainRule(url: string, initiatorUrl: string | undefined, rule: DomainRule): boolean {
-  const destinationMatches = matchesUrlPattern(url, rule.pattern);
+function matchesDomainRule(url: string, initiatorUrl: string | undefined, rule: DomainRule, settings: ExtensionSettings): boolean {
+  const destinationMatches = isAnyOriginTarget(rule.pattern, settings) && matchesUrlPattern(url, rule.pattern);
   const initiatorMatches = Boolean(initiatorUrl && matchesUrlPattern(initiatorUrl, rule.pattern));
   const crossOrigin = Boolean(initiatorUrl && getOrigin(url) !== getOrigin(initiatorUrl));
 

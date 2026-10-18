@@ -68,7 +68,8 @@ describe('SettingsController', () => {
       theme: 'system',
       allowAllHeaders: false,
       allowCredentials: false,
-      domainRules: []
+      domainRules: [],
+      anyOriginTargets: []
     });
 
     stored.set('mode', 'global');

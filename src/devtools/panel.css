@@ -703,6 +703,20 @@ h1 {
   color: var(--accent);
 }
 
+.rule-badge[data-state='warning'] {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.any-origin-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  cursor: pointer;
+}
+
 .rule-actions {
   display: flex;
   gap: 6px;

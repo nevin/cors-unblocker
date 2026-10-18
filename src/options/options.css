@@ -304,6 +304,27 @@ input {
   grid-area: methods;
 }
 
+.list li > .rule-options {
+  grid-area: methods;
+  display: grid;
+  gap: 8px;
+}
+
+.any-origin-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.any-origin-toggle[data-enabled='true'] {
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .list li > .row-feedback {
   grid-area: feedback;
 }
