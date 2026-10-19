@@ -433,3 +433,18 @@ describe('pausing in a real browser', () => {
   });
 });
 
+describe('toolbar icon in a real browser', () => {
+  const title = () => worker.evaluate(() => chrome.action.getTitle({}));
+
+  it('shows whether overrides are on, off or paused', async () => {
+    await configure({ enabled: false });
+    await waitFor(async () => (await title()) === 'CORS Unblocker: Off', 'the Off tooltip');
+
+    await configure({ enabled: true, whitelist: [app] });
+    await waitFor(async () => (await title()) === 'CORS Unblocker: On · 1 trusted page', 'the On tooltip');
+
+    await configure({ enabled: false, pausedUntil: Date.now() + 3_600_000 });
+    await waitFor(async () => (await title()).startsWith('CORS Unblocker: Paused until'), 'the Paused tooltip');
+  });
+});
+

@@ -2,6 +2,7 @@ import { clearPersistedRequestLog, loadSettings, onSettingsChanged, recordDiscov
 import { CorsMonitor } from '../shared/corsMonitor';
 import { ALLOW_ALL_HEADERS_VALUE } from '../shared/dnrRules';
 import { listenForPauseEnd, syncPauseAlarm } from '../shared/pause';
+import { showOverridesState } from '../shared/toolbarIcon';
 import { ExtensionSettings, getAllowedMethodsForRequest, isCorsEnabledForRequest, isCredentialsSupported } from '../shared/settings';
 
 interface FirefoxHeader {
@@ -73,6 +74,7 @@ onSettingsChanged((settings) => {
   currentSettings = settings;
   void corsMonitor.refreshBadges();
   void syncPauseAlarm(settings);
+  void showOverridesState(browser.browserAction, settings).catch((error: unknown) => console.error('Unable to update the toolbar icon', error));
 });
 
 browser.webRequest.onHeadersReceived.addListener(
@@ -86,6 +88,7 @@ void refreshSettings();
 async function refreshSettings(): Promise<void> {
   currentSettings = await loadSettings();
   await syncPauseAlarm(currentSettings);
+  await showOverridesState(browser.browserAction, currentSettings).catch((error: unknown) => console.error('Unable to update the toolbar icon', error));
 }
 
 function handleHeadersReceived(details: HeadersReceivedDetails): BlockingResponse {

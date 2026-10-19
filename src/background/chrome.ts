@@ -2,6 +2,7 @@ import { clearPersistedRequestLog, loadSettings, onSettingsChanged, recordDiscov
 import { CorsMonitor } from '../shared/corsMonitor';
 import { buildDynamicRules } from '../shared/dnrRules';
 import { listenForPauseEnd, syncPauseAlarm } from '../shared/pause';
+import { showOverridesState } from '../shared/toolbarIcon';
 import { ExtensionSettings } from '../shared/settings';
 
 let ruleUpdateQueue = Promise.resolve();
@@ -55,6 +56,7 @@ onSettingsChanged((settings) => {
   queueApplyRules(settings);
   void corsMonitor.refreshBadges();
   void syncPauseAlarm(settings);
+  void showOverridesState(chrome.action, settings).catch((error: unknown) => console.error('Unable to update the toolbar icon', error));
 });
 
 void refreshRules();
@@ -63,6 +65,7 @@ async function refreshRules(): Promise<void> {
   currentSettings = await loadSettings();
   await queueApplyRules(currentSettings);
   await syncPauseAlarm(currentSettings);
+  await showOverridesState(chrome.action, currentSettings).catch((error: unknown) => console.error('Unable to update the toolbar icon', error));
 }
 
 function queueApplyRules(settings: ExtensionSettings): Promise<void> {
