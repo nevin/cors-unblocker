@@ -29,6 +29,10 @@ h1 {
 }
 
 header .subtitle {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 400;
+  text-transform: none;
   max-width: 520px;
   margin: -18px 0 30px;
   color: var(--muted);
@@ -244,8 +248,18 @@ label {
 
 .row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 10px;
+}
+
+.row select {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
 }
 
 input {
@@ -536,3 +550,80 @@ input {
     padding-top: 8px;
   }
 }
+
+/* Unified rule list: a plain-language name, the exact pattern, chips for type and options. */
+.rule-rows li > .rule-row__options {
+  grid-area: methods;
+}
+
+.rule-row__main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rule-row__name {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.rule-row__pattern {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.rule-row__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.rule-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.rule-chip[data-tone='warning'] {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.rule-chip[data-tone='skip'] {
+  border-style: dashed;
+}
+
+.rule-rows li[data-kind='skip'] .rule-row__name {
+  color: var(--muted);
+}
+
+.rule-row__options {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.rule-row__options summary {
+  width: fit-content;
+  color: var(--accent);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 560px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .row input {
+    grid-column: 1 / -1;
+  }
+}
+

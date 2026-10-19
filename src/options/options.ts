@@ -6,7 +6,7 @@ import {
   onDiscoveredRequestsChanged,
   resetSettings
 } from '../shared/browserApi';
-import { DEFAULT_ALLOW_METHODS, CorsMode, ExtensionSettings, exportRules, getTrustPatternForRequest, importRules, isCredentialsSupported, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
+import { DEFAULT_ALLOW_METHODS, CorsMode, ExtensionSettings, exportRules, formatPatternForPeople, getTrustPatternForRequest, importRules, isCredentialsSupported, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
 import { applyTheme } from '../shared/theme';
 
 const form = document.querySelector<HTMLFormElement>('#form');
@@ -15,7 +15,7 @@ const message = document.querySelector<HTMLElement>('#message');
 const countElement = document.querySelector<HTMLElement>('#count');
 const list = document.querySelector<HTMLUListElement>('#list');
 const discoveredList = document.querySelector<HTMLUListElement>('#discovered-list');
-const skipList = document.querySelector<HTMLUListElement>('#skip-list');
+const ruleKindSelect = document.querySelector<HTMLSelectElement>('#rule-kind');
 const methodInputs = [...document.querySelectorAll<HTMLInputElement>('.allow-method')];
 const selectAllMethodsButton = document.querySelector<HTMLButtonElement>('#select-all-methods');
 const selectDefaultMethodsButton = document.querySelector<HTMLButtonElement>('#select-default-methods');
@@ -143,44 +143,48 @@ async function initialize(): Promise<void> {
 async function addPattern(): Promise<void> {
   const rawPattern = input?.value.trim() ?? '';
   const normalized = normalizePattern(rawPattern);
+  const kind = ruleKindSelect?.value === 'skip' ? 'skip' : 'enabled';
 
   if (!normalized) {
-    setMessage(`Could not add "${rawPattern || 'empty value'}". Use an http(s) URL, hostname, wildcard host, or browser match pattern.`, true);
+    setMessage(`Could not add "${rawPattern || 'empty value'}". Use a hostname, a full http(s) URL, or a wildcard such as *.example.dev.`, true);
     return;
   }
 
-  if (settings.whitelist.includes(normalized)) {
-    setMessage('That pattern is already listed.', true);
+  const existing = kind === 'enabled' ? settings.whitelist : settings.skiplist;
+  if (existing.includes(normalized)) {
+    setMessage(`${formatPatternForPeople(normalized)} is already ${kind === 'enabled' ? 'trusted' : 'skipped'}.`, true);
     return;
   }
 
   setBusy(true);
-  setMessage('Saving...', false);
-
   try {
-    settings = await settingsController.update({
-      whitelist: [...settings.whitelist, normalized]
-    });
+    // A pattern is either trusted or skipped, never both.
+    settings = await settingsController.update(kind === 'enabled'
+      ? { whitelist: [...settings.whitelist, normalized], skiplist: settings.skiplist.filter((item) => item !== normalized) }
+      : { skiplist: [...settings.skiplist, normalized], whitelist: settings.whitelist.filter((item) => item !== normalized) });
     if (input) {
       input.value = '';
     }
-    setMessage('Rule added to active rules.', false);
+    setMessage(kind === 'enabled' ? `${formatPatternForPeople(normalized)} is trusted.` : `${formatPatternForPeople(normalized)} is skipped.`, false);
     render();
   } catch {
-    setMessage('Unable to save pattern.', true);
+    setMessage('Unable to save the rule.', true);
   } finally {
     setBusy(false);
   }
 }
 
-async function removePattern(pattern: string, kind: 'enabled' | 'skip', feedbackTarget?: HTMLElement): Promise<void> {
+async function removePattern(pattern: string, kind: RuleKind, feedbackTarget?: HTMLElement): Promise<void> {
   setBusy(true);
 
   try {
+    const { [pattern]: _removedMethods, ...methodOverrides } = settings.methodOverrides;
     settings = await settingsController.update(kind === 'enabled'
-      ? { whitelist: settings.whitelist.filter((item) => item !== pattern) }
-      : { skiplist: settings.skiplist.filter((item) => item !== pattern) });
-    setMessage('Pattern removed.', false);
+      ? { whitelist: settings.whitelist.filter((item) => item !== pattern), methodOverrides }
+      : kind === 'domain'
+        ? { domainRules: settings.domainRules.filter((rule) => rule.pattern !== pattern), methodOverrides }
+        : { skiplist: settings.skiplist.filter((item) => item !== pattern) });
+    setMessage(`${formatPatternForPeople(pattern)} removed.`, false);
     if (feedbackTarget) {
       showRowFeedback(feedbackTarget, 'Removed', () => render());
     } else {
@@ -223,14 +227,17 @@ async function addDiscoveredPattern(pattern: string, kind: 'enabled' | 'skip', f
   }
 }
 
-function editPattern(pattern: string): void {
+function editPattern(pattern: string, kind: 'enabled' | 'skip' = 'enabled'): void {
   if (!input) {
     return;
   }
 
   input.value = pattern;
+  if (ruleKindSelect) {
+    ruleKindSelect.value = kind;
+  }
   input.focus();
-  setMessage('Pattern loaded for editing.', false);
+  setMessage('Loaded into the form above. Change it and press Add; then remove the old one.', false);
 }
 
 function render(): void {
@@ -282,12 +289,16 @@ function render(): void {
   if (themeSelect) {
     themeSelect.value = settings.theme;
   }
-  renderPatternList(list, settings.whitelist, 'enabled');
-  renderPatternList(skipList, settings.skiplist, 'skip');
+  renderRules();
   renderDiscoveredRequests();
 
   if (countElement) {
-    countElement.textContent = `${settings.whitelist.length} ${settings.whitelist.length === 1 ? 'rule' : 'rules'}`;
+    const parts = [
+      `${settings.whitelist.length} trusted`,
+      ...(settings.domainRules.length ? [`${settings.domainRules.length} domain`] : []),
+      ...(settings.skiplist.length ? [`${settings.skiplist.length} skipped`] : [])
+    ];
+    countElement.textContent = parts.join(' · ');
   }
 }
 
@@ -431,68 +442,118 @@ async function updateMethods(allowMethods: string[]): Promise<void> {
   }
 }
 
-function renderPatternList(target: HTMLUListElement | null, patterns: string[], kind: 'enabled' | 'skip'): void {
-  if (!target) {
+type RuleKind = 'enabled' | 'skip' | 'domain';
+
+interface RuleRow {
+  pattern: string;
+  kind: RuleKind;
+  label: string;
+}
+
+// One list for every rule: trusted pages first, then domain rules, then skip rules.
+function renderRules(): void {
+  if (!list) {
     return;
   }
 
-  target.textContent = '';
-  if (patterns.length === 0) {
+  const skipped = new Set(settings.skiplist);
+  const rows: RuleRow[] = [
+    ...settings.whitelist.map((pattern) => ({ pattern, kind: 'enabled' as const, label: 'Trusted page' })),
+    ...settings.domainRules.filter((rule) => !skipped.has(rule.pattern)).map((rule) => ({
+      pattern: rule.pattern,
+      kind: 'domain' as const,
+      label: rule.type === 'both' ? 'Domain rule' : `Domain rule · ${rule.type === 'first_party' ? 'own responses' : 'calls it makes'}`
+    })),
+    ...settings.skiplist.map((pattern) => ({ pattern, kind: 'skip' as const, label: 'Skipped' }))
+  ];
+
+  list.textContent = '';
+  if (rows.length === 0) {
     const item = document.createElement('li');
     const title = document.createElement('strong');
     const description = document.createElement('span');
     item.className = 'empty';
-    title.textContent = kind === 'enabled' ? 'No active rules yet.' : 'No skip rules yet.';
-    description.textContent = kind === 'enabled'
-      ? 'Add the page you are developing above so requests it makes get relaxed CORS headers.'
-      : 'Patterns added here keep their original CORS headers even when the rest of the site is active.';
+    title.textContent = 'No rules yet.';
+    description.textContent = 'Add the page you are developing, such as localhost:3000, or click Trust in the popup while you are on it.';
     item.append(title, description);
-    if (kind === 'enabled') {
-      const addButton = document.createElement('button');
-      addButton.type = 'button';
-      addButton.textContent = 'Add a rule';
-      addButton.addEventListener('click', () => input?.focus());
-      item.append(addButton);
-    }
-    target.append(item);
+    list.append(item);
     return;
   }
 
-  patterns.forEach((pattern) => {
-    const item = document.createElement('li');
-    const code = document.createElement('code');
-    const feedback = document.createElement('span');
-    const actions = document.createElement('span');
-    const editButton = document.createElement('button');
-    const removeButton = document.createElement('button');
+  rows.forEach((row) => list.append(createRuleRow(row)));
+}
 
-    code.textContent = pattern;
-    feedback.className = 'row-feedback';
-    feedback.setAttribute('aria-live', 'polite');
+function createRuleRow({ pattern, kind, label }: RuleRow): HTMLLIElement {
+  const item = document.createElement('li');
+  const main = document.createElement('div');
+  const name = document.createElement('strong');
+  const code = document.createElement('code');
+  const chips = document.createElement('span');
+  const feedback = document.createElement('span');
+  const actions = document.createElement('span');
+  const anyOrigin = settings.anyOriginTargets.includes(pattern);
+  const customMethods = settings.methodOverrides[pattern];
+
+  item.dataset.kind = kind;
+  main.className = 'rule-row__main';
+  name.className = 'rule-row__name';
+  name.textContent = formatPatternForPeople(pattern);
+  code.className = 'rule-row__pattern';
+  code.textContent = pattern;
+  chips.className = 'rule-row__chips';
+  appendChip(chips, label, kind === 'skip' ? 'skip' : undefined);
+  if (anyOrigin) {
+    appendChip(chips, 'Any site may read', 'warning');
+  }
+  if (customMethods && kind !== 'skip') {
+    appendChip(chips, `Methods: ${customMethods.join(', ')}`);
+  }
+  main.append(name, code, chips);
+
+  feedback.className = 'row-feedback';
+  feedback.setAttribute('aria-live', 'polite');
+  actions.className = 'item-actions';
+  if (kind !== 'domain') {
+    const editButton = document.createElement('button');
     editButton.type = 'button';
     editButton.className = 'icon-button';
     editButton.textContent = '✎';
-    editButton.setAttribute('aria-label', `Edit ${pattern}`);
-    editButton.title = 'Edit pattern';
-    editButton.addEventListener('click', () => editPattern(pattern));
-    removeButton.type = 'button';
-    removeButton.className = 'icon-button danger-button';
-    removeButton.textContent = '×';
-    removeButton.setAttribute('aria-label', `Remove ${pattern}`);
-    removeButton.addEventListener('click', () => void removePattern(pattern, kind, feedback));
-    actions.className = 'item-actions';
-    actions.append(editButton, removeButton);
+    editButton.setAttribute('aria-label', `Edit ${formatPatternForPeople(pattern)}`);
+    editButton.title = 'Edit';
+    editButton.addEventListener('click', () => editPattern(pattern, kind));
+    actions.append(editButton);
+  }
+  const removeButton = document.createElement('button');
+  removeButton.type = 'button';
+  removeButton.className = 'icon-button danger-button';
+  removeButton.textContent = '×';
+  removeButton.setAttribute('aria-label', `Remove ${formatPatternForPeople(pattern)}`);
+  removeButton.title = 'Remove';
+  removeButton.addEventListener('click', () => void removePattern(pattern, kind, feedback));
+  actions.append(removeButton);
 
-    if (kind === 'enabled') {
-      const ruleOptions = document.createElement('span');
-      ruleOptions.className = 'rule-options';
-      ruleOptions.append(createMethodEditor(pattern), createAnyOriginToggle(pattern));
-      item.append(code, ruleOptions, feedback, actions);
-    } else {
-      item.append(code, createMethodEditor(pattern), feedback, actions);
-    }
-    target.append(item);
-  });
+  item.append(main);
+  // Skip rules keep a URL's original headers, so methods and opt-ins do not apply to them.
+  if (kind !== 'skip') {
+    const options = document.createElement('details');
+    const summary = document.createElement('summary');
+    options.className = 'rule-row__options';
+    summary.textContent = 'Options';
+    options.append(summary, createAnyOriginToggle(pattern), createMethodEditor(pattern));
+    item.append(options);
+  }
+  item.append(feedback, actions);
+  return item;
+}
+
+function appendChip(target: HTMLElement, text: string, tone?: string): void {
+  const chip = document.createElement('span');
+  chip.className = 'rule-chip';
+  if (tone) {
+    chip.dataset.tone = tone;
+  }
+  chip.textContent = text;
+  target.append(chip);
 }
 
 function renderDiscoveredRequests(): void {

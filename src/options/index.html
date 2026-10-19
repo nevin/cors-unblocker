@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CORS Settings</title>
+    <title>CORS Unblocker Settings</title>
     <link rel="stylesheet" href="shared.css" />
     <link rel="stylesheet" href="options.css" />
   </head>
@@ -15,27 +15,59 @@
           <img class="brand-logo brand-logo--dark" src="../assets/brand/logo-horizontal-dark.svg" alt="CORS Unblocker" height="36" />
         </p>
         <h1>Settings</h1>
-        <p class="subtitle">Choose where CORS response headers are relaxed and which requests are excluded.</p>
+        <p class="subtitle">Choose which pages get relaxed CORS headers, and how responses are relaxed.</p>
       </header>
 
+      <section id="rules-section" class="setting-section" aria-labelledby="rules-title">
+        <div class="section-heading"><div><h2 id="rules-title">Rules</h2><p class="section-help">Trust the pages you're developing: calls they make get relaxed CORS headers. Skip rules keep a URL's original headers.</p></div><p id="count" class="summary" aria-live="polite"></p></div>
+        <form id="form" class="editor">
+          <label for="pattern">Add a page or URL</label>
+          <div class="row">
+            <input id="pattern" type="text" placeholder="localhost:3000 or *.example.dev" autocomplete="off" aria-describedby="pattern-note" />
+            <select id="rule-kind" aria-label="Rule type">
+              <option value="enabled">Trust</option>
+              <option value="skip">Skip</option>
+            </select>
+            <button type="submit">Add</button>
+          </div>
+          <p id="pattern-note" class="section-help pattern-note">Hosts, full URLs, wildcard subdomains (*.example.dev) and paths ending in /* all work.</p>
+          <p id="message" class="message" role="status"></p>
+        </form>
+        <ul id="list" class="list rule-rows"></ul>
+      </section>
+
+      <details id="discovered-section" class="setting-section request-section">
+        <summary class="section-summary"><span>Discovered requests</span></summary>
+        <p class="section-help">URLs recently called by web pages while overrides are enabled. ✓ trusts the page that made the request; − skips the URL.</p>
+        <ul id="discovered-list" class="list"></ul>
+      </details>
+
       <section class="setting-section behavior-section">
-        <div class="section-heading"><div><h2>Behavior</h2><p class="section-help">Control when the extension modifies responses.</p></div><p id="settings-status" class="settings-status" aria-live="polite"></p></div>
-        <label class="setting-toggle"><input id="enabled" type="checkbox" /><span><strong>Enable CORS overrides</strong><small>Apply the rules below to matching requests.</small></span></label>
+        <div class="section-heading"><div><h2>Behavior</h2><p class="section-help">Turn overrides on or off, and choose which pages they apply to.</p></div><p id="settings-status" class="settings-status" aria-live="polite"></p></div>
+        <label class="setting-toggle"><input id="enabled" type="checkbox" /><span><strong>CORS overrides on</strong><small>Apply your rules to matching requests.</small></span></label>
         <fieldset class="mode-options">
           <legend>Scope</legend>
-          <label><input type="radio" name="mode" value="whitelist" /> <span><strong>Whitelist</strong><small>Only active rules</small></span></label>
-          <label><input type="radio" name="mode" value="global" /> <span><strong>Global</strong><small>All websites</small></span></label>
+          <label><input type="radio" name="mode" value="whitelist" /> <span><strong>Trusted pages only</strong><small>Recommended</small></span></label>
+          <label><input type="radio" name="mode" value="global" /> <span><strong>Every website</strong><small>Global mode</small></span></label>
         </fieldset>
-        <p id="global-mode-warning" class="global-mode-warning" role="alert" hidden>Global mode relaxes CORS headers for every website, not just your active rules. Switch to Whitelist when you are done debugging.</p>
+        <p id="global-mode-warning" class="global-mode-warning" role="alert" hidden>Global mode relaxes CORS headers for every website, not just your active rules. Switch back to trusted pages only when you are done debugging.</p>
       </section>
 
       <section class="setting-section">
-        <h2>Default CORS methods</h2>
-        <p class="section-help">Methods returned in Access-Control-Allow-Methods unless a pattern has a custom selection.</p>
+        <h2>Blocked-call detection</h2>
+        <label class="header-option"><input id="detect-cors-issues" type="checkbox" /> <span><strong>Detect calls blocked by CORS</strong><small>Shows a red count on the toolbar icon and lists blocked calls in the popup, with a one-click fix. Works even while overrides are off.</small><em>Only failing cross-origin calls are kept, without query strings, per tab, in memory for this browser session. They are cleared when the tab navigates or closes and never leave your browser.</em></span></label>
+      </section>
 
+      <details id="response-settings" class="setting-section">
+        <summary class="section-summary"><span>Response headers &amp; methods</span></summary>
+        <p class="section-help">What the extension sends back on relaxed responses. The defaults suit most projects.</p>
+        <label class="header-option"><input id="allow-all-headers" type="checkbox" /> <span><strong>Allow all request headers</strong><small>Sets Access-Control-Allow-Headers to *, plus Authorization and other common headers by name</small><em id="headers-warning" hidden>Wildcard headers may not work with credentialed requests.</em></span></label>
+        <label class="header-option"><input id="allow-credentials" type="checkbox" /> <span><strong>Allow credentials</strong><small>Sets Allow-Credentials to true, sends the page's own origin instead of *, and adds Vary: Origin. Needed for calls that send cookies.</small><em id="credentials-hint">Use an explicit http(s) origin pattern in Chrome. Reload open tabs after changing this.</em></span></label>
+        <label class="header-option"><input id="expose-all-headers" type="checkbox" /> <span><strong>Expose all response headers</strong><small>Sets Access-Control-Expose-Headers so pages can read custom response headers such as X-Total-Count.</small><em>In Chrome this is a wildcard, which browsers ignore on calls that send cookies; Firefox lists the actual header names.</em></span></label>
+        <label class="header-option"><input id="respect-server-cors" type="checkbox" /> <span><strong>Respect server CORS headers</strong><small>Leaves a response alone when the server already sends Access-Control-Allow-Origin, so APIs that handle CORS themselves, including credentialed ones, keep working on trusted pages.</small><em>Turn off only if a server sends the wrong origin and you need to override it.</em></span></label>
         <fieldset class="methods">
-        <legend>Method values</legend>
-        <p class="section-help">These values shape the preflight response; the extension does not block matching requests.</p>
+        <legend>Default allowed methods</legend>
+        <p class="section-help">Sent in Access-Control-Allow-Methods unless a rule sets its own. They shape preflight answers; the extension never blocks requests.</p>
         <div class="methods-bulk-actions"><button id="select-all-methods" class="secondary-button" type="button">Select all</button><button id="select-default-methods" class="secondary-button" type="button">Reset to defaults</button></div>
         <label><input class="allow-method" type="checkbox" value="GET" /> GET</label>
         <label><input class="allow-method" type="checkbox" value="POST" /> POST</label>
@@ -45,21 +77,7 @@
         <label><input class="allow-method" type="checkbox" value="OPTIONS" /> OPTIONS</label>
         <label><input class="allow-method" type="checkbox" value="HEAD" /> HEAD</label>
         </fieldset>
-      </section>
-
-      <details class="setting-section advanced-options">
-        <summary class="section-summary"><span>Headers &amp; credentials</span></summary>
-        <p class="section-help">Advanced response header behavior, separate from the allowed methods above.</p>
-        <label class="header-option"><input id="allow-all-headers" type="checkbox" /> <span><strong>Allow all request headers</strong><small>Sets Access-Control-Allow-Headers to *, plus Authorization and other common headers by name</small><em id="headers-warning" hidden>Wildcard headers may not work with credentialed requests.</em></span></label>
-        <label class="header-option"><input id="allow-credentials" type="checkbox" /> <span><strong>Allow credentials</strong><small>Sets Allow-Credentials to true, sends the page's own origin instead of *, and adds Vary: Origin. Needed for calls that send cookies.</small><em id="credentials-hint">Use an explicit http(s) origin pattern in Chrome. Reload open tabs after changing this.</em></span></label>
-        <label class="header-option"><input id="expose-all-headers" type="checkbox" /> <span><strong>Expose all response headers</strong><small>Sets Access-Control-Expose-Headers so pages can read custom response headers such as X-Total-Count.</small><em>In Chrome this is a wildcard, which browsers ignore on calls that send cookies; Firefox lists the actual header names.</em></span></label>
-        <label class="header-option"><input id="respect-server-cors" type="checkbox" /> <span><strong>Respect server CORS headers</strong><small>Leaves a response alone when the server already sends Access-Control-Allow-Origin, so APIs that handle CORS themselves, including credentialed ones, keep working on trusted pages.</small><em>Turn off only if a server sends the wrong origin and you need to override it.</em></span></label>
       </details>
-
-      <section class="setting-section">
-        <h2>Blocked-call detection</h2>
-        <label class="header-option"><input id="detect-cors-issues" type="checkbox" /> <span><strong>Detect calls blocked by CORS</strong><small>Shows a red count on the toolbar icon and lists blocked calls in the popup, with a one-click fix. Works even while overrides are off.</small><em>Only failing cross-origin calls are kept, without query strings, per tab, in memory for this browser session. They are cleared when the tab navigates or closes and never leave your browser.</em></span></label>
-      </section>
 
       <section class="setting-section">
         <div class="section-heading"><div><h2>Appearance</h2><p class="section-help">Choose the theme for every plugin page.</p></div><label class="theme-control" for="theme">Theme
@@ -67,35 +85,7 @@
         </label></div>
       </section>
 
-      <section class="setting-section">
-        <h2>Active rules</h2>
-        <form id="form" class="editor">
-          <label for="pattern">Add a URL or pattern</label>
-          <p class="section-help">Add the page you are developing, such as http://localhost:3000. Its requests to any API get relaxed CORS headers. Other websites are not affected unless you turn on "Any site may read" for a rule.</p>
-          <p class="section-help pattern-note">Supported: exact hosts, wildcard subdomains, wildcard schemes, and path patterns ending in /*.</p>
-          <div class="row">
-            <input id="pattern" type="text" placeholder="https://api.local.test or *.example.dev" autocomplete="off" />
-            <button type="submit">Add</button>
-          </div>
-          <p id="message" class="message" role="status"></p>
-        </form>
-        <p id="count" class="summary" aria-live="polite"></p>
-        <ul id="list" class="list"></ul>
-      </section>
-
-      <details class="setting-section request-section" open>
-        <summary class="section-summary"><span>Discovered requests</span></summary>
-        <p class="section-help">URLs recently called by web pages while overrides are enabled. ✓ trusts the page that made the request; − skips the URL.</p>
-        <ul id="discovered-list" class="list"></ul>
-      </details>
-
-      <section class="setting-section">
-        <h2>Skip rules</h2>
-        <p class="section-help">Matching requests keep their original CORS headers.</p>
-        <ul id="skip-list" class="list"></ul>
-      </section>
-
-      <details class="setting-section rules-backup" open>
+      <details class="setting-section rules-backup">
         <summary class="section-summary"><span>Import/Export rules</span></summary>
         <p class="section-help">Export your rules to JSON or preview an import before replacing current rule and CORS response settings.</p>
         <div class="backup-actions">

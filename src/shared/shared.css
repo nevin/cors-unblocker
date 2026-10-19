@@ -288,10 +288,15 @@ input:focus-visible {
 }
 
 .header-option em {
-  color: var(--danger);
+  color: var(--muted);
   font-size: 11px;
   font-style: normal;
   font-weight: 500;
+}
+
+/* Notes under an option are guidance; only real warnings are shown in red. */
+#headers-warning {
+  color: var(--danger);
 }
 
 .method-editor summary {

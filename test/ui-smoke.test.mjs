@@ -39,10 +39,10 @@ describe('ui source smoke checks', () => {
   it('options page exposes danger zone and managed lists', async () => {
     const html = await source('src/options/index.html');
 
-    ['class="setting-section danger-zone"', 'id="reset"', 'id="list"', 'id="discovered-list"', 'id="skip-list"', 'class="setting-section advanced-options"', 'Import/Export rules', 'id="import-preview"', 'id="import-preview-summary"', 'id="confirm-import-rules"', 'id="cancel-import-rules"'].forEach((token) => {
+    ['class="setting-section danger-zone"', 'id="reset"', 'id="list"', 'id="rule-kind"', 'id="discovered-list"', 'id="response-settings"', 'Import/Export rules', 'id="import-preview"', 'id="import-preview-summary"', 'id="confirm-import-rules"', 'id="cancel-import-rules"'].forEach((token) => {
       assert.match(html, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     });
-    assert.equal((html.match(/<h2>Active rules<\/h2>/g) ?? []).length, 1);
+    assert.equal((html.match(/<h2 id="rules-title">Rules<\/h2>/g) ?? []).length, 1);
   });
 
   it('popup and DevTools panel expose blocked-call hooks', async () => {
