@@ -113,7 +113,7 @@ describe('request log', () => {
     const notified = [];
     onDiscoveredRequestsChanged((requests) => notified.push(requests));
 
-    await recordDiscoveredRequest('https://api.example.dev/users?token=secret', 'https://app.example.dev/page?session=abc', 7);
+    await recordDiscoveredRequest('https://api.example.dev/users?token=secret', 'https://app.example.dev/page?session=abc', 7, 'fetch');
     await recordDiscoveredRequest('https://api.example.dev/users?token=other', 'https://app.example.dev/page?session=abc', 7);
 
     const log = sessionStored.get(REQUEST_LOG_KEY);
@@ -121,6 +121,8 @@ describe('request log', () => {
     assert.equal(log[0].url, 'https://api.example.dev/users');
     assert.equal(log[0].initiator, 'https://app.example.dev/page');
     assert.equal(log[0].count, 2);
+    // A later sighting without a type keeps the type already known.
+    assert.equal(log[0].type, 'fetch');
     assert.doesNotMatch(JSON.stringify(log), /secret|session=abc/);
     assert.equal(setCalls.filter((values) => REQUEST_LOG_KEY in values).length, localWritesBefore);
     assert.equal(notified.at(-1)[0].url, 'https://api.example.dev/users');

@@ -73,8 +73,15 @@
             <button class="request-scope-filter__button is-active" data-request-scope="current" type="button">This page <span id="current-request-count" class="tab-count">0</span></button>
             <button class="request-scope-filter__button" data-request-scope="other" type="button">Other tabs <span id="other-count" class="tab-count">0</span></button>
           </div>
-          <label class="link-filter" for="current-link-filter-input">Filter requests</label>
-          <div id="current-link-filter-row" class="link-filter-row"><input id="current-link-filter-input" class="link-filter__input" type="search" placeholder="Search observed request URLs" autocomplete="off" /><button id="clear-current-link-filter" class="icon-button" type="button" aria-label="Clear request filter" title="Clear filter">×</button></div>
+          <div id="current-link-filter-row" class="link-filter-row request-filter">
+            <label class="request-filter__box" for="current-link-filter-input">
+              <svg class="request-filter__icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M1.5 2.5h13l-5 6v5l-3-1.5v-3.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+              <input id="current-link-filter-input" class="link-filter__input" type="search" placeholder="Filter" aria-label="Filter requests by URL or page" autocomplete="off" />
+            </label>
+            <button id="clear-current-link-filter" class="icon-button" type="button" aria-label="Clear request filter" title="Clear filter">×</button>
+            <label class="request-filter__invert" title="Show requests that do NOT match the filter"><input id="invert-link-filter" type="checkbox" /> Invert</label>
+          </div>
+          <div id="request-type-filter" class="type-filter" role="group" aria-label="Request types (Cmd or Ctrl-click to choose several)"></div>
           <ul id="current-links" class="link-list"></ul>
         </section>
         <section id="panel-rules" class="tab-panel is-visible" role="tabpanel" aria-labelledby="tab-rules">

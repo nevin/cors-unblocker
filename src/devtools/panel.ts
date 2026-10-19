@@ -8,6 +8,7 @@ import {
 } from '../shared/browserApi';
 import { CorsFix, CorsIssue, PlannedCorsIssue, applyCorsFixes, collectCorsFixes, describeCorsCall, describeCorsFix, describeCorsProblem, isOpenCorsIssue, planCorsIssues, planIssueFix } from '../shared/corsDiagnosis';
 import { loadTabCorsIssues, onTabCorsIssuesChanged } from '../shared/corsMonitor';
+import { REQUEST_CATEGORIES, RequestCategory, categorizeDevtoolsEntry } from '../shared/requestTypes';
 import { CallRule, DEFAULT_ALLOW_METHODS, DomainRuleType, EffectiveCorsRule, ExtensionSettings, exportRules, formatPatternForPeople, getAllowedMethodsForRequest, getCallRuleForRequest, getEffectiveCorsRuleForRequest, getTrustPatternForRequest, importRules, isCorsEnabledForRequest, isCorsSkippedForRequest, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
 import { getStatusText } from '../shared/statusText';
 import { applyTheme } from '../shared/theme';
@@ -39,6 +40,8 @@ const tabPanels = [...document.querySelectorAll<HTMLElement>('.tab-panel')];
 const currentLinkFilterInput = document.querySelector<HTMLInputElement>('#current-link-filter-input');
 const rulesFilterInput = document.querySelector<HTMLInputElement>('#rules-filter-input');
 const clearCurrentLinkFilterButton = document.querySelector<HTMLButtonElement>('#clear-current-link-filter');
+const invertLinkFilterInput = document.querySelector<HTMLInputElement>('#invert-link-filter');
+const requestTypeFilter = document.querySelector<HTMLElement>('#request-type-filter');
 const clearRulesFilterButton = document.querySelector<HTMLButtonElement>('#clear-rules-filter');
 const requestScopeHelp = document.querySelector<HTMLElement>('#request-scope-help');
 const requestScopeButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-request-scope]')];
@@ -74,6 +77,9 @@ let suppressNextSettingsRender = false;
 let pendingImportedSettings: Partial<ExtensionSettings> | null = null;
 let requestScope: 'current' | 'other' = 'current';
 let corsIssues: CorsIssue[] = [];
+// Request types to show; empty means all. Built from REQUEST_CATEGORIES so the chips match the classifier.
+let selectedRequestTypes = new Set<RequestCategory>();
+const requestTypeButtons = buildRequestTypeButtons();
 // Once someone picks a tab, the panel stops switching tabs on its own.
 let userPickedTab = false;
 // Calls that failed and that the current settings now fix; they need a page reload to retry.
@@ -120,7 +126,9 @@ async function initialize(): Promise<void> {
         return;
       }
 
-      observeRequest(url);
+      // Chrome adds `_resourceType` to the HAR entry; Firefox only has the response MIME type.
+      const resourceType = (request as unknown as { _resourceType?: string })._resourceType;
+      observeRequest(url, categorizeDevtoolsEntry(resourceType, request.response?.content?.mimeType, url));
     });
   } catch {
     setStatus('Unable to load settings', true);
@@ -178,6 +186,25 @@ async function initialize(): Promise<void> {
     });
   });
   currentLinkFilterInput?.addEventListener('input', scheduleRenderLinks);
+  invertLinkFilterInput?.addEventListener('change', scheduleRenderLinks);
+  // Like DevTools: a click shows one type, Cmd or Ctrl-click adds or removes types, All shows everything.
+  requestTypeButtons.forEach((button) => button.addEventListener('click', (event) => {
+    const type = button.dataset.requestType;
+    if (type === 'all' || !type) {
+      setSelectedRequestTypes(new Set());
+    } else if (event.metaKey || event.ctrlKey) {
+      const next = new Set(selectedRequestTypes);
+      if (next.has(type as RequestCategory)) {
+        next.delete(type as RequestCategory);
+      } else {
+        next.add(type as RequestCategory);
+      }
+      setSelectedRequestTypes(next);
+    } else {
+      setSelectedRequestTypes(new Set([type as RequestCategory]));
+    }
+    renderLinks();
+  }));
   rulesFilterInput?.addEventListener('input', renderRules);
   copyCurrentLinksButton?.addEventListener('click', () => {
     void copyCurrentRequestUrls();
@@ -220,7 +247,7 @@ async function initialize(): Promise<void> {
   });
 }
 
-function observeRequest(requestUrl: string): void {
+function observeRequest(requestUrl: string, type: RequestCategory): void {
   const url = toLoggedUrl(requestUrl);
   if (!url) {
     return;
@@ -228,8 +255,8 @@ function observeRequest(requestUrl: string): void {
 
   const existing = discoveredRequests.find((request) => request.url === url && request.tabId === inspectedTabId);
   const observed: DiscoveredRequest = existing
-    ? { ...existing, count: existing.count + 1, lastSeen: Date.now() }
-    : { url, initiator: inspectedUrl, tabId: inspectedTabId, count: 1, lastSeen: Date.now() };
+    ? { ...existing, count: existing.count + 1, lastSeen: Date.now(), type: type === 'other' ? existing.type : type }
+    : { url, initiator: inspectedUrl, tabId: inspectedTabId, count: 1, lastSeen: Date.now(), type };
 
   discoveredRequests = mergeRequests(discoveredRequests, [observed]);
   scheduleRenderLinks();
@@ -724,7 +751,7 @@ function mergeRequests(current: DiscoveredRequest[], incoming: DiscoveredRequest
     const key = `${request.tabId}|${request.url}|${request.initiator ?? ''}`;
     const previous = merged.get(key);
     merged.set(key, previous
-      ? { ...previous, count: Math.max(previous.count, request.count), lastSeen: Math.max(previous.lastSeen, request.lastSeen) }
+      ? { ...previous, count: Math.max(previous.count, request.count), lastSeen: Math.max(previous.lastSeen, request.lastSeen), type: request.type === 'other' ? previous.type : request.type }
       : request);
   });
 
@@ -1055,7 +1082,8 @@ function renderLinkList(target: HTMLUListElement | null, requests: DiscoveredReq
 
   target.textContent = '';
   const filter = filterInput?.value.trim().toLowerCase() ?? '';
-  requests = collapseDiscoveredRequests(requests).filter((request) => !filter || `${request.url} ${request.initiator ?? ''}`.toLowerCase().includes(filter));
+  const narrowed = Boolean(filter) || selectedRequestTypes.size > 0;
+  requests = collapseDiscoveredRequests(requests).filter(matchesRequestFilters);
   if (requests.length === 0) {
     const item = document.createElement('li');
     const icon = document.createElement('span');
@@ -1064,25 +1092,26 @@ function renderLinkList(target: HTMLUListElement | null, requests: DiscoveredReq
 
     item.className = 'empty-state';
     icon.className = 'empty-state__icon';
-    icon.textContent = filter ? '⌕' : '↗';
+    icon.textContent = narrowed ? '⌕' : '↗';
     icon.setAttribute('aria-hidden', 'true');
-    title.textContent = filter ? 'No matching requests' : currentTab ? 'No requests recorded for this page yet' : 'No controlled requests in other tabs';
-    description.textContent = filter ? 'Try another URL, domain, or clear the filter.' : currentTab ? 'Reload the inspected page while this panel is open.' : 'Requests from other tabs will appear here when they match an active rule.';
+    title.textContent = narrowed ? 'No matching requests' : currentTab ? 'No requests recorded for this page yet' : 'No controlled requests in other tabs';
+    description.textContent = narrowed ? 'Try another filter or request type, or clear the filters.' : currentTab ? 'Reload the inspected page while this panel is open.' : 'Requests from other tabs will appear here when they match an active rule.';
     item.append(icon, title, description);
 
-    if (filter) {
+    if (narrowed) {
       const clearButton = document.createElement('button');
       clearButton.type = 'button';
       clearButton.className = 'icon-button';
       clearButton.textContent = '×';
-      clearButton.setAttribute('aria-label', 'Clear request filter');
-      clearButton.title = 'Clear filter';
+      clearButton.setAttribute('aria-label', 'Clear request filters');
+      clearButton.title = 'Clear filters';
       clearButton.addEventListener('click', () => {
         if (filterInput) {
           filterInput.value = '';
-          renderLinks();
-          filterInput.focus();
         }
+        setSelectedRequestTypes(new Set());
+        renderLinks();
+        filterInput?.focus();
       });
       item.append(clearButton);
     } else if (currentTab && allowPageButton && !allowPageButton.disabled) {
@@ -1164,7 +1193,8 @@ function renderLinkList(target: HTMLUListElement | null, requests: DiscoveredReq
       meta.className = 'link-meta';
       const inspectedOrigin = inspectedUrl ? new URL(inspectedUrl).origin : null;
       const initiatorOrigin = request.initiator ? new URL(request.initiator).origin : null;
-      meta.textContent = `${currentTab ? (initiatorOrigin === inspectedOrigin ? 'Direct' : 'Indirect') : `Tab ${request.tabId}`} | ${request.count} request${request.count === 1 ? '' : 's'}${request.initiator ? ` | ${request.initiator}` : ''}`;
+      const typeLabel = REQUEST_CATEGORIES.find((category) => category.id === request.type)?.label ?? 'Other';
+      meta.textContent = `${typeLabel} | ${currentTab ? (initiatorOrigin === inspectedOrigin ? 'Direct' : 'Indirect') : `Tab ${request.tabId}`} | ${request.count} request${request.count === 1 ? '' : 's'}${request.initiator ? ` | ${request.initiator}` : ''}`;
       feedback.className = 'link-feedback';
       feedback.setAttribute('aria-live', 'polite');
       status.className = 'link-status';
@@ -1211,6 +1241,48 @@ function renderLinkList(target: HTMLUListElement | null, requests: DiscoveredReq
   });
 }
 
+function buildRequestTypeButtons(): HTMLButtonElement[] {
+  if (!requestTypeFilter) {
+    return [];
+  }
+  const make = (type: string, label: string) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'type-filter__chip';
+    button.dataset.requestType = type;
+    button.textContent = label;
+    button.setAttribute('aria-pressed', String(type === 'all'));
+    button.classList.toggle('is-active', type === 'all');
+    return button;
+  };
+  const all = make('all', 'All');
+  const divider = document.createElement('span');
+  divider.className = 'type-filter__divider';
+  divider.setAttribute('aria-hidden', 'true');
+  const chips = REQUEST_CATEGORIES.map((category) => make(category.id, category.label));
+  requestTypeFilter.append(all, divider, ...chips);
+  return [all, ...chips];
+}
+
+// The text filter (optionally inverted) and the selected request types, as in DevTools' Network panel.
+function matchesRequestFilters(request: DiscoveredRequest): boolean {
+  const filter = currentLinkFilterInput?.value.trim().toLowerCase() ?? '';
+  const textMatches = !filter || `${request.url} ${request.initiator ?? ''}`.toLowerCase().includes(filter);
+  const invert = Boolean(filter) && Boolean(invertLinkFilterInput?.checked);
+  const typeMatches = selectedRequestTypes.size === 0 || selectedRequestTypes.has(request.type ?? 'other');
+  return (invert ? !textMatches : textMatches) && typeMatches;
+}
+
+function setSelectedRequestTypes(next: Set<RequestCategory>): void {
+  selectedRequestTypes = next;
+  requestTypeButtons.forEach((button) => {
+    const type = button.dataset.requestType;
+    const active = type === 'all' ? next.size === 0 : next.has(type as RequestCategory);
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
 function getRequestHostname(url: string): string {
   try {
     const parsedUrl = new URL(url);
@@ -1250,9 +1322,8 @@ function syncLinkStatuses(): void {
 }
 
 async function copyCurrentRequestUrls(): Promise<void> {
-  const filter = currentLinkFilterInput?.value.trim().toLowerCase() ?? '';
   const requests = collapseDiscoveredRequests(discoveredRequests.filter((request) => request.tabId === inspectedTabId))
-    .filter((request) => !filter || `${request.url} ${request.initiator ?? ''}`.toLowerCase().includes(filter));
+    .filter(matchesRequestFilters);
   await copyText(requests.map((request) => request.url).join('\n'));
 }
 

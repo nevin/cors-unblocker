@@ -146,7 +146,8 @@ export function defineSharedCases(h) {
 
       const logs = await h.readLogs();
       assert.equal(isLogged(logs, disabledPath), false);
-      assert.ok(logs.session.some((entry) => entry.url === `${h.api}${enabledPath}`));
+      assert.equal(logs.session.find((entry) => entry.url === `${h.api}${enabledPath}`)?.type, 'fetch');
+      assert.equal(logs.session.find((entry) => entry.url === `${h.app}/`)?.type, 'doc');
       assert.equal(logs.local, undefined);
       assert.doesNotMatch(JSON.stringify(logs.session), /secret/);
     });

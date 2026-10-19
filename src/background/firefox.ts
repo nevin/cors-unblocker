@@ -1,6 +1,7 @@
 import { clearPersistedRequestLog, loadSettings, onSettingsChanged, recordDiscoveredRequest } from '../shared/browserApi';
 import { CorsMonitor } from '../shared/corsMonitor';
 import { ALLOW_ALL_HEADERS_VALUE } from '../shared/dnrRules';
+import { categorizeWebRequest } from '../shared/requestTypes';
 import { listenForPauseEnd, syncPauseAlarm } from '../shared/pause';
 import { showOverridesState } from '../shared/toolbarIcon';
 import { openWelcomeOnInstall } from '../shared/welcome';
@@ -62,11 +63,12 @@ browser.webRequest.onBeforeRequest.addListener(
     }
 
     const requestContext = details as typeof details & { originUrl?: string; documentUrl?: string; type?: string };
-    void recordDiscoveredRequest(details.url, requestContext.originUrl ?? requestContext.documentUrl, details.tabId);
+    void recordDiscoveredRequest(details.url, requestContext.originUrl ?? requestContext.documentUrl, details.tabId, categorizeWebRequest(details.type, details.url));
   },
   {
     urls: ['<all_urls>'],
-    types: ['main_frame', 'sub_frame', 'xmlhttprequest', 'script', 'stylesheet', 'image', 'font', 'media', 'websocket', 'ping']
+    // Firefox's own type names (web_manifest, imageset, beacon) are not in the shared Chrome typings.
+    types: ['main_frame', 'sub_frame', 'xmlhttprequest', 'script', 'stylesheet', 'image', 'font', 'media', 'websocket', 'ping', 'object', 'other', 'web_manifest', 'imageset', 'beacon'] as unknown as chrome.webRequest.ResourceType[]
   }
 );
 

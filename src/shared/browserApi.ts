@@ -1,3 +1,4 @@
+import { RequestCategory, isRequestCategory } from './requestTypes.js';
 import { DEFAULT_SETTINGS, ExtensionSettings, SETTINGS_KEY, mergeSettings } from './settings.js';
 
 type StorageChangeHandler = (settings: ExtensionSettings) => void;
@@ -110,6 +111,8 @@ export interface DiscoveredRequest {
   tabId: number;
   count: number;
   lastSeen: number;
+  // Requests logged before types were recorded count as 'other'.
+  type: RequestCategory;
 }
 
 export function collapseDiscoveredRequests(requests: DiscoveredRequest[]): DiscoveredRequest[] {
@@ -168,11 +171,12 @@ function normalizeRequestList(value: unknown): DiscoveredRequest[] {
     initiator: request.initiator ?? null,
     tabId: request.tabId ?? -1,
     count: request.count ?? 1,
-    lastSeen: request.lastSeen ?? Date.now()
+    lastSeen: request.lastSeen ?? Date.now(),
+    type: isRequestCategory(request.type) ? request.type : 'other'
   }));
 }
 
-export async function recordDiscoveredRequest(requestUrl: string, initiator: string | undefined, tabId: number | undefined): Promise<void> {
+export async function recordDiscoveredRequest(requestUrl: string, initiator: string | undefined, tabId: number | undefined, type: RequestCategory = 'other'): Promise<void> {
   const url = toLoggedUrl(requestUrl);
   if (!url || tabId === undefined || tabId < 0) {
     return;
@@ -182,8 +186,8 @@ export async function recordDiscoveredRequest(requestUrl: string, initiator: str
   const requests = await loadDiscoveredRequests();
   const existing = requests.find((request) => request.url === url && request.initiator === normalizedInitiator && request.tabId === tabId);
   const nextRequest: DiscoveredRequest = existing
-    ? { ...existing, count: existing.count + 1, lastSeen: Date.now() }
-    : { url, initiator: normalizedInitiator, tabId, count: 1, lastSeen: Date.now() };
+    ? { ...existing, count: existing.count + 1, lastSeen: Date.now(), type: type === 'other' ? existing.type : type }
+    : { url, initiator: normalizedInitiator, tabId, count: 1, lastSeen: Date.now(), type };
   requestCache = [nextRequest, ...requests.filter((request) => request !== existing)].slice(0, 500);
 
   await scheduleRequestFlush();

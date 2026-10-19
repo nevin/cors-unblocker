@@ -1249,3 +1249,89 @@ h1 {
 .cors-blocked__row-actions button {
   white-space: nowrap;
 }
+
+/* Request filters, after DevTools' Network panel: a filter box with Invert, then request-type chips. */
+.request-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.request-filter__box {
+  display: flex;
+  flex: 1 1 240px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.request-filter__box:focus-within {
+  border-color: var(--accent);
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.request-filter__box .link-filter__input {
+  flex: 1;
+  min-height: 32px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  outline: none;
+}
+
+.request-filter__invert {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.type-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 12px;
+}
+
+.type-filter__chip {
+  min-height: 26px !important;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 10px !important;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.type-filter__chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--surface-muted);
+  color: var(--ink);
+}
+
+.type-filter__chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.type-filter__divider {
+  width: 1px;
+  height: 18px;
+  background: var(--line);
+}
+

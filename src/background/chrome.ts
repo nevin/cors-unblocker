@@ -1,6 +1,7 @@
 import { clearPersistedRequestLog, loadSettings, onSettingsChanged, recordDiscoveredRequest } from '../shared/browserApi';
 import { CorsMonitor } from '../shared/corsMonitor';
 import { buildDynamicRules } from '../shared/dnrRules';
+import { categorizeWebRequest } from '../shared/requestTypes';
 import { listenForPauseEnd, syncPauseAlarm } from '../shared/pause';
 import { showOverridesState } from '../shared/toolbarIcon';
 import { openWelcomeOnInstall } from '../shared/welcome';
@@ -32,12 +33,12 @@ chrome.webRequest.onBeforeRequest.addListener(
       void corsMonitor.clearTab(details.tabId);
     }
     if (currentSettings?.enabled) {
-      void recordDiscoveredRequest(details.url, details.initiator, details.tabId);
+      void recordDiscoveredRequest(details.url, details.initiator, details.tabId, categorizeWebRequest(details.type, details.url));
     }
   },
   {
     urls: ['<all_urls>'],
-    types: ['main_frame', 'sub_frame', 'xmlhttprequest', 'script', 'stylesheet', 'image', 'font', 'media', 'websocket', 'ping']
+    types: ['main_frame', 'sub_frame', 'xmlhttprequest', 'script', 'stylesheet', 'image', 'font', 'media', 'websocket', 'ping', 'object', 'other']
   }
 );
 
