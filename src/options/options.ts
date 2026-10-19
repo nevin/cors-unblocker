@@ -6,7 +6,7 @@ import {
   onDiscoveredRequestsChanged,
   resetSettings
 } from '../shared/browserApi';
-import { DEFAULT_ALLOW_METHODS, CorsMode, ExtensionSettings, exportRules, formatPatternForPeople, getTrustPatternForRequest, importRules, isCredentialsSupported, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
+import { CallRule, DEFAULT_ALLOW_METHODS, CorsMode, ExtensionSettings, exportRules, formatPatternForPeople, getCallRuleForRequest, getTrustPatternForRequest, importRules, isCredentialsSupported, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
 import { applyTheme } from '../shared/theme';
 import { WELCOME_HASH } from '../shared/welcome';
 
@@ -231,6 +231,45 @@ async function addDiscoveredPattern(pattern: string, kind: 'enabled' | 'skip', f
   }
 }
 
+async function addCallRule(callRule: CallRule, feedbackTarget?: HTMLElement): Promise<void> {
+  setBusy(true);
+  try {
+    settings = await settingsController.update({ callRules: [...settings.callRules, callRule] });
+    setMessage(`${formatPatternForPeople(callRule.target)} is unblocked for ${formatPatternForPeople(callRule.from)}. Its other calls are unchanged.`, false);
+    if (feedbackTarget) {
+      showRowFeedback(feedbackTarget, 'Unblocked', () => render());
+    } else {
+      render();
+    }
+  } catch {
+    setMessage('Unable to unblock that call.', true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function removeCallRule(callRule: CallRule, feedbackTarget?: HTMLElement): Promise<void> {
+  setBusy(true);
+  try {
+    const stillUsed = settings.callRules.some((rule) => rule.target === callRule.target && rule.from !== callRule.from);
+    const { [callRule.target]: _removedMethods, ...methodOverrides } = settings.methodOverrides;
+    settings = await settingsController.update({
+      callRules: settings.callRules.filter((rule) => rule.target !== callRule.target || rule.from !== callRule.from),
+      ...(stillUsed ? {} : { methodOverrides })
+    });
+    setMessage(`${formatPatternForPeople(callRule.target)} is no longer unblocked for ${formatPatternForPeople(callRule.from)}.`, false);
+    if (feedbackTarget) {
+      showRowFeedback(feedbackTarget, 'Removed', () => render());
+    } else {
+      render();
+    }
+  } catch {
+    setMessage('Unable to remove that call.', true);
+  } finally {
+    setBusy(false);
+  }
+}
+
 function editPattern(pattern: string, kind: 'enabled' | 'skip' = 'enabled'): void {
   if (!input) {
     return;
@@ -314,6 +353,7 @@ function render(): void {
     const parts = [
       `${settings.whitelist.length} trusted`,
       ...(settings.domainRules.length ? [`${settings.domainRules.length} domain`] : []),
+      ...(settings.callRules.length ? [`${settings.callRules.length} unblocked ${settings.callRules.length === 1 ? 'call' : 'calls'}`] : []),
       ...(settings.skiplist.length ? [`${settings.skiplist.length} skipped`] : [])
     ];
     countElement.textContent = parts.join(' · ');
@@ -460,12 +500,13 @@ async function updateMethods(allowMethods: string[]): Promise<void> {
   }
 }
 
-type RuleKind = 'enabled' | 'skip' | 'domain';
+type RuleKind = 'enabled' | 'skip' | 'domain' | 'call';
 
 interface RuleRow {
   pattern: string;
   kind: RuleKind;
   label: string;
+  from?: string;
 }
 
 // One list for every rule: trusted pages first, then domain rules, then skip rules.
@@ -482,6 +523,7 @@ function renderRules(): void {
       kind: 'domain' as const,
       label: rule.type === 'both' ? 'Domain rule' : `Domain rule · ${rule.type === 'first_party' ? 'own responses' : 'calls it makes'}`
     })),
+    ...settings.callRules.map((rule) => ({ pattern: rule.target, kind: 'call' as const, label: 'Unblocked call', from: rule.from })),
     ...settings.skiplist.map((pattern) => ({ pattern, kind: 'skip' as const, label: 'Skipped' }))
   ];
 
@@ -501,7 +543,7 @@ function renderRules(): void {
   rows.forEach((row) => list.append(createRuleRow(row)));
 }
 
-function createRuleRow({ pattern, kind, label }: RuleRow): HTMLLIElement {
+function createRuleRow({ pattern, kind, label, from }: RuleRow): HTMLLIElement {
   const item = document.createElement('li');
   const main = document.createElement('div');
   const name = document.createElement('strong');
@@ -520,6 +562,9 @@ function createRuleRow({ pattern, kind, label }: RuleRow): HTMLLIElement {
   code.textContent = pattern;
   chips.className = 'rule-row__chips';
   appendChip(chips, label, kind === 'skip' ? 'skip' : undefined);
+  if (kind === 'call' && from) {
+    appendChip(chips, `Only from ${formatPatternForPeople(from)}`);
+  }
   if (anyOrigin) {
     appendChip(chips, 'Any site may read', 'warning');
   }
@@ -531,7 +576,7 @@ function createRuleRow({ pattern, kind, label }: RuleRow): HTMLLIElement {
   feedback.className = 'row-feedback';
   feedback.setAttribute('aria-live', 'polite');
   actions.className = 'item-actions';
-  if (kind !== 'domain') {
+  if (kind === 'enabled' || kind === 'skip') {
     const editButton = document.createElement('button');
     editButton.type = 'button';
     editButton.className = 'icon-button';
@@ -547,7 +592,9 @@ function createRuleRow({ pattern, kind, label }: RuleRow): HTMLLIElement {
   removeButton.textContent = '×';
   removeButton.setAttribute('aria-label', `Remove ${formatPatternForPeople(pattern)}`);
   removeButton.title = 'Remove';
-  removeButton.addEventListener('click', () => void removePattern(pattern, kind, feedback));
+  removeButton.addEventListener('click', () => void (kind === 'call' && from
+    ? removeCallRule({ target: pattern, from }, feedback)
+    : removePattern(pattern, kind === 'call' ? 'enabled' : kind, feedback)));
   actions.append(removeButton);
 
   item.append(main);
@@ -557,7 +604,8 @@ function createRuleRow({ pattern, kind, label }: RuleRow): HTMLLIElement {
     const summary = document.createElement('summary');
     options.className = 'rule-row__options';
     summary.textContent = 'Options';
-    options.append(summary, createAnyOriginToggle(pattern), createMethodEditor(pattern));
+    // An unblocked call is already scoped to one page, so "Any site may read" does not apply to it.
+    options.append(summary, ...(kind === 'call' ? [] : [createAnyOriginToggle(pattern)]), createMethodEditor(pattern));
     item.append(options);
   }
   item.append(feedback, actions);
@@ -617,10 +665,16 @@ function renderDiscoveredRequests(): void {
     enableButton.type = 'button';
     enableButton.className = 'icon-button';
     enableButton.textContent = '✓';
-    const trustPattern = getTrustPatternForRequest(request.url, request.initiator) ?? request.url;
-    enableButton.setAttribute('aria-label', `Allow requests from ${trustPattern}`);
-    enableButton.title = `Allow requests from ${trustPattern}`;
-    enableButton.addEventListener('click', () => void addDiscoveredPattern(trustPattern, 'enabled', feedback));
+    // Unblock just this call from the page that made it; the page's other calls are unaffected.
+    const callRule = getCallRuleForRequest(request.url, request.initiator);
+    const enableLabel = callRule
+      ? `Unblock this call from ${formatPatternForPeople(callRule.from)}`
+      : `Trust ${formatPatternForPeople(getTrustPatternForRequest(request.url, request.initiator) ?? request.url)}`;
+    enableButton.setAttribute('aria-label', enableLabel);
+    enableButton.title = enableLabel;
+    enableButton.addEventListener('click', () => void (callRule
+      ? addCallRule(callRule, feedback)
+      : addDiscoveredPattern(getTrustPatternForRequest(request.url, request.initiator) ?? request.url, 'enabled', feedback)));
     skipButton.type = 'button';
     skipButton.className = 'icon-button danger-button';
     skipButton.textContent = '−';

@@ -28,11 +28,11 @@ Everything the Chrome Web Store developer dashboard asks for, ready to paste. Up
 > • The popup and the DevTools "CORS" panel list each blocked call with the reason: a missing or mismatched Access-Control-Allow-Origin header, a preflight that rejects your method or headers, or a call that sends cookies to a server answering "*".
 >
 > FIX IT IN ONE CLICK
-> • "Fix" applies exactly the changes needed, and shows them before you click: turn the extension on, trust the page, allow a method, headers or credentials.
+> • "Fix" unblocks exactly the blocked calls, only from the page that made them, so some requests are relaxed and others keep normal CORS. It shows what it will change before you click.
 > • Problems no header can fix, such as a preflight answered with 404, are explained instead of hidden.
 >
 > ONLY THE PAGES YOU TRUST
-> • You trust the page you're developing (localhost:3000, say). Calls that page makes get relaxed CORS headers; every other website keeps normal CORS.
+> • Unblock one call at a time, or trust the whole page you're developing (localhost:3000, say). Every other website keeps normal CORS.
 > • Responses that already carry CORS headers are left alone by default, so APIs that handle CORS themselves, including ones that use cookies, keep working.
 > • Skip rules, per-rule methods, exposed response headers and credentials support are available in Settings.
 >

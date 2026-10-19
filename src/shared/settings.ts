@@ -7,6 +7,13 @@ export interface DomainRule {
   type: DomainRuleType;
 }
 
+// One unblocked call: requests to `target`, made by pages matching `from`. Nothing else on that page
+// or that API is affected, so some requests can be relaxed while others keep normal CORS.
+export interface CallRule {
+  target: string;
+  from: string;
+}
+
 export interface RulesExport {
   version: 1;
   whitelist: string[];
@@ -19,6 +26,7 @@ export interface RulesExport {
   anyOriginTargets?: string[];
   respectServerCors?: boolean;
   exposeAllHeaders?: boolean;
+  callRules?: CallRule[];
 }
 
 export interface ExtensionSettings {
@@ -43,12 +51,15 @@ export interface ExtensionSettings {
   exposeAllHeaders: boolean;
   // While paused, overrides are off (enabled is false) until this time, when the background turns them back on.
   pausedUntil: number | null;
+  // Individually unblocked calls: one API URL pattern, from one page.
+  callRules: CallRule[];
 }
 
 export type EffectiveCorsRule =
   | { state: 'active'; source: 'global'; pattern: '<all_urls>' }
   | { state: 'active'; source: 'pattern'; pattern: string }
   | { state: 'active'; source: 'domain'; pattern: string; domainType: DomainRuleType }
+  | { state: 'active'; source: 'call'; pattern: string; from: string }
   | { state: 'skipped'; source: 'skip'; pattern: string }
   | { state: 'inactive'; source: 'disabled' | 'none' };
 
@@ -71,6 +82,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   ,detectCorsIssues: true
   ,exposeAllHeaders: true
   ,pausedUntil: null
+  ,callRules: []
 };
 
 export const SETTINGS_KEY = 'corsDevControlSettings';
@@ -172,7 +184,8 @@ export function exportRules(settings: ExtensionSettings): string {
     allowCredentials: settings.allowCredentials,
     anyOriginTargets: settings.anyOriginTargets,
     respectServerCors: settings.respectServerCors,
-    exposeAllHeaders: settings.exposeAllHeaders
+    exposeAllHeaders: settings.exposeAllHeaders,
+    callRules: settings.callRules
   };
 
   return `${JSON.stringify(rules, null, 2)}\n`;
@@ -195,7 +208,8 @@ export function importRules(value: string): Partial<ExtensionSettings> {
     allowCredentials: rules.allowCredentials === true,
     anyOriginTargets: Array.isArray(rules.anyOriginTargets) ? rules.anyOriginTargets : [],
     respectServerCors: rules.respectServerCors !== false,
-    exposeAllHeaders: rules.exposeAllHeaders !== false
+    exposeAllHeaders: rules.exposeAllHeaders !== false,
+    callRules: Array.isArray(rules.callRules) ? rules.callRules : []
   };
 }
 
@@ -240,6 +254,7 @@ export function mergeSettings(value: Partial<ExtensionSettings> | undefined): Ex
     ,exposeAllHeaders: typeof value?.exposeAllHeaders === 'boolean' ? value.exposeAllHeaders : DEFAULT_SETTINGS.exposeAllHeaders
     // Switching on ends any pause.
     ,pausedUntil: value?.enabled !== true && typeof value?.pausedUntil === 'number' && value.pausedUntil > 0 ? value.pausedUntil : null
+    ,callRules: normalizeCallRules(value?.callRules)
   };
 }
 
@@ -254,6 +269,39 @@ function normalizeAnyOriginTargets(value: Partial<ExtensionSettings> | undefined
     ...normalizeDomainRules(value.domainRules).map((rule) => rule.pattern)
   ]);
   return normalizePatterns(value.anyOriginTargets).filter((pattern) => rulePatterns.has(pattern));
+}
+
+export function normalizeCallRules(value: CallRule[] | undefined): CallRule[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const rules = value.flatMap((rule) => {
+    const target = normalizePattern(String(rule?.target ?? ''));
+    const from = normalizePattern(String(rule?.from ?? ''));
+    return target && from && target !== '<all_urls>' && from !== '<all_urls>' ? [{ target, from }] : [];
+  });
+  return [...new Map(rules.map((rule) => [`${rule.from} ${rule.target}`, rule])).values()];
+}
+
+// The call rule that unblocks exactly this request from this page: the request URL (path included,
+// query dropped) as the target, and the page's origin as `from`.
+export function getCallRuleForRequest(url: string, initiatorUrl: string | null | undefined): CallRule | null {
+  if (!initiatorUrl) {
+    return null;
+  }
+  try {
+    const request = new URL(url);
+    const target = normalizePattern(`${request.origin}${request.pathname}`);
+    const from = getTrustPatternForRequest(url, initiatorUrl);
+    return target && from && from !== normalizePattern(url) ? { target, from } : null;
+  } catch {
+    return null;
+  }
+}
+
+export function matchesCallRule(url: string, initiatorUrl: string | undefined, rule: CallRule): boolean {
+  return Boolean(initiatorUrl) && matchesUrlPattern(url, rule.target) && matchesUrlPattern(initiatorUrl ?? '', rule.from);
 }
 
 // How a pattern reads to people: 'http://localhost:3000/*' becomes 'localhost:3000'. Schemes and
@@ -295,7 +343,8 @@ export function isCorsEnabledForRequest(url: string, initiatorUrl: string | unde
   }
 
   return settings.whitelist.some((pattern) => matchesActiveRule(url, initiatorUrl, pattern, settings))
-    || settings.domainRules.some((rule) => matchesDomainRule(url, initiatorUrl, rule, settings));
+    || settings.domainRules.some((rule) => matchesDomainRule(url, initiatorUrl, rule, settings))
+    || settings.callRules.some((rule) => matchesCallRule(url, initiatorUrl, rule));
 }
 
 export function isCorsSkippedForRequest(url: string, initiatorUrl: string | undefined, settings: ExtensionSettings): boolean {
@@ -316,9 +365,16 @@ export function getEffectiveCorsRuleForRequest(url: string, initiatorUrl: string
     return { state: 'active', source: 'global', pattern: '<all_urls>' };
   }
 
+  const callRule = settings.callRules
+    .filter((rule) => matchesCallRule(url, initiatorUrl, rule))
+    .sort((left, right) => right.target.length - left.target.length)[0];
   const activePattern = settings.whitelist
     .filter((pattern) => matchesActiveRule(url, initiatorUrl, pattern, settings))
     .sort((left, right) => right.length - left.length)[0];
+  // The more specific of the two explains the request best, as in getAllowedMethodsForRequest.
+  if (callRule && (!activePattern || callRule.target.length >= activePattern.length)) {
+    return { state: 'active', source: 'call', pattern: callRule.target, from: callRule.from };
+  }
   if (activePattern) {
     return { state: 'active', source: 'pattern', pattern: activePattern };
   }
@@ -338,9 +394,10 @@ export function getEffectiveCorsRuleForRequest(url: string, initiatorUrl: string
 // Individual rules outrank domain rules; within each, the longer pattern wins. Chrome's DNR priorities
 // in dnrRules.ts encode the same order.
 export function getAllowedMethodsForRequest(url: string, initiatorUrl: string | undefined, settings: ExtensionSettings): string[] {
-  const rulePatterns = new Set([...settings.whitelist, ...settings.domainRules.map((rule) => rule.pattern)]);
+  const rulePatterns = new Set([...settings.whitelist, ...settings.domainRules.map((rule) => rule.pattern), ...settings.callRules.map((rule) => rule.target)]);
   const individualCandidates = [
     ...settings.whitelist.filter((pattern) => matchesActiveRule(url, initiatorUrl, pattern, settings)),
+    ...settings.callRules.filter((rule) => matchesCallRule(url, initiatorUrl, rule)).map((rule) => rule.target),
     ...Object.keys(settings.methodOverrides).filter((pattern) => !rulePatterns.has(pattern) && matchesUrlPattern(url, pattern))
   ].sort((left, right) => right.length - left.length);
   const domainCandidates = settings.domainRules
@@ -371,7 +428,7 @@ export function isCredentialsSupported(settings: ExtensionSettings): boolean {
     return false;
   }
 
-  return [...settings.whitelist, ...settings.domainRules.map((rule) => rule.pattern)]
+  return [...settings.whitelist, ...settings.domainRules.map((rule) => rule.pattern), ...settings.callRules.map((rule) => rule.from)]
     .some((pattern) => /^(https?):\/\/[^/*]+\//.test(pattern));
 }
 
@@ -457,9 +514,10 @@ function toHostRegExpSource(host: string): string {
 function toPathRegExpSource(path: string): string {
   const toWildcardSource = (value: string) => value.split('*').map(escapeRegExp).join('.*');
 
-  // 'https://host/api/*' covers '/api' itself as well as everything below it, but not '/apiX'.
+  // 'https://host/api/*' covers '/api' itself (with or without a query string) and everything below
+  // it, but not '/apiX'.
   if (path.endsWith('/*')) {
-    return `${toWildcardSource(path.slice(0, -2))}(?:/.*)?`;
+    return `${toWildcardSource(path.slice(0, -2))}(?:[/?].*)?`;
   }
 
   return toWildcardSource(path);

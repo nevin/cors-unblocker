@@ -12,7 +12,13 @@ export function getStatusText(settings: ExtensionSettings): string {
     return 'On · every website';
   }
   const ruleCount = settings.whitelist.length + settings.domainRules.length;
-  return `On · ${ruleCount} trusted page${ruleCount === 1 ? '' : 's'}`;
+  const callCount = settings.callRules.length;
+  const pages = `${ruleCount} trusted page${ruleCount === 1 ? '' : 's'}`;
+  const calls = `${callCount} unblocked call${callCount === 1 ? '' : 's'}`;
+  if (callCount === 0) {
+    return `On · ${pages}`;
+  }
+  return ruleCount === 0 ? `On · ${calls}` : `On · ${pages}, ${calls}`;
 }
 
 export function formatTime(timestamp: number): string {

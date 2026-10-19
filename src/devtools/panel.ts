@@ -8,11 +8,11 @@ import {
 } from '../shared/browserApi';
 import { CorsFix, CorsIssue, PlannedCorsIssue, applyCorsFixes, collectCorsFixes, describeCorsCall, describeCorsFix, describeCorsProblem, isOpenCorsIssue, planCorsIssues, planIssueFix } from '../shared/corsDiagnosis';
 import { loadTabCorsIssues, onTabCorsIssuesChanged } from '../shared/corsMonitor';
-import { DEFAULT_ALLOW_METHODS, DomainRuleType, EffectiveCorsRule, ExtensionSettings, exportRules, formatPatternForPeople, getAllowedMethodsForRequest, getEffectiveCorsRuleForRequest, getTrustPatternForRequest, importRules, isCorsEnabledForRequest, isCorsSkippedForRequest, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
+import { CallRule, DEFAULT_ALLOW_METHODS, DomainRuleType, EffectiveCorsRule, ExtensionSettings, exportRules, formatPatternForPeople, getAllowedMethodsForRequest, getCallRuleForRequest, getEffectiveCorsRuleForRequest, getTrustPatternForRequest, importRules, isCorsEnabledForRequest, isCorsSkippedForRequest, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
 import { getStatusText } from '../shared/statusText';
 import { applyTheme } from '../shared/theme';
 
-type RuleEntry = { pattern: string; kind: 'url' | 'domain'; list: 'active' | 'skip'; domainType?: DomainRuleType };
+type RuleEntry = { pattern: string; kind: 'url' | 'domain' | 'call'; list: 'active' | 'skip'; domainType?: DomainRuleType; from?: string };
 
 const enabledInput = document.querySelector<HTMLInputElement>('#enabled');
 const noticeElement = document.querySelector<HTMLElement>('#notice');
@@ -258,7 +258,8 @@ function renderRules(): void {
   const domainPatternSet = new Set(settings.domainRules.map((rule) => rule.pattern));
   const activeEntries: RuleEntry[] = [
     ...(settings.mode === 'global' ? [{ pattern: '<all_urls>', kind: 'url' as const, list: 'active' as const }] : settings.whitelist.filter((pattern) => !domainPatternSet.has(pattern)).map((pattern) => ({ pattern, kind: 'url' as const, list: 'active' as const }))),
-    ...settings.domainRules.filter((rule) => !settings.skiplist.includes(rule.pattern)).map((rule) => ({ pattern: rule.pattern, kind: 'domain' as const, list: 'active' as const, domainType: rule.type }))
+    ...settings.domainRules.filter((rule) => !settings.skiplist.includes(rule.pattern)).map((rule) => ({ pattern: rule.pattern, kind: 'domain' as const, list: 'active' as const, domainType: rule.type })),
+    ...settings.callRules.map((rule) => ({ pattern: rule.target, kind: 'call' as const, list: 'active' as const, from: rule.from }))
   ];
   const skippedEntries: RuleEntry[] = [
     ...settings.skiplist.filter((pattern) => !domainPatternSet.has(pattern)).map((pattern) => ({ pattern, kind: 'url' as const, list: 'skip' as const })),
@@ -266,7 +267,7 @@ function renderRules(): void {
   ];
   const visibleEntries = [...activeEntries, ...skippedEntries]
     .filter((entry) => ruleListFilter === 'all' || entry.list === ruleListFilter)
-    .filter((entry) => !filter || entry.pattern.toLowerCase().includes(filter));
+    .filter((entry) => !filter || `${entry.pattern} ${entry.from ?? ''}`.toLowerCase().includes(filter));
   renderRuleList(rulesList, visibleEntries, Boolean(filter));
   if (rulesCount) {
     rulesCount.textContent = String(new Set(visibleEntries.map((entry) => entry.pattern)).size);
@@ -303,6 +304,7 @@ function renderRuleList(target: HTMLUListElement, entries: RuleEntry[], isFilter
   const groups: Array<{ title: string; entries: RuleEntry[] }> = [
     { title: 'Active page and origin rules', entries: entries.filter((entry) => entry.list === 'active' && entry.kind === 'url') },
     { title: 'Active domain rules', entries: entries.filter((entry) => entry.list === 'active' && entry.kind === 'domain') },
+    { title: 'Unblocked calls', entries: entries.filter((entry) => entry.kind === 'call') },
     { title: 'Skipped page and origin rules', entries: entries.filter((entry) => entry.list === 'skip' && entry.kind === 'url') },
     { title: 'Skipped domain rules', entries: entries.filter((entry) => entry.list === 'skip' && entry.kind === 'domain') }
   ].filter((group) => ruleListFilter === 'all' || group.entries.every((entry) => entry.list === ruleListFilter));
@@ -373,6 +375,17 @@ function renderRuleItem(target: HTMLUListElement, entry: RuleEntry): void {
       moveButton.addEventListener('click', () => void moveRule(pattern, entry.list));
       actions.className = 'rule-actions';
       actions.append(editButton, removeButton, moveButton);
+  } else if (entry.kind === 'call' && entry.from) {
+      const from = entry.from;
+      const removeButton = document.createElement('button');
+      removeButton.className = 'icon-button danger-button';
+      removeButton.type = 'button';
+      removeButton.textContent = '×';
+      removeButton.setAttribute('aria-label', `Stop unblocking ${formatPatternForPeople(pattern)} for ${formatPatternForPeople(from)}`);
+      removeButton.title = 'Remove unblocked call';
+      removeButton.addEventListener('click', () => void removeCallRule({ target: pattern, from }));
+      actions.className = 'rule-actions';
+      actions.append(removeButton);
   } else if (entry.kind === 'domain') {
       const removeButton = document.createElement('button');
       const moveButton = document.createElement('button');
@@ -421,6 +434,9 @@ function getRuleSourceLabel(entry: RuleEntry): string {
   }
   if (entry.kind === 'domain') {
     return 'Domain';
+  }
+  if (entry.kind === 'call') {
+    return `Only from ${formatPatternForPeople(entry.from ?? '')}`;
   }
   return entry.pattern.endsWith('/*') && /^https?:\/\/[^/]+\/\*$/.test(entry.pattern) ? 'Origin' : 'Page';
 }
@@ -872,6 +888,16 @@ function getLinkStatus(url: string, initiator: string | undefined): { text: stri
     : { text: 'Not enabled', state: 'inactive' };
 }
 
+async function addCallRule(callRule: CallRule): Promise<void> {
+  await updateSettings({ enabled: true, callRules: [...settings.callRules, callRule] });
+  showNotice(`${formatPatternForPeople(callRule.target)} is unblocked for ${formatPatternForPeople(callRule.from)}; its other calls are unchanged. Reload the page to retry.`, false);
+}
+
+async function removeCallRule(callRule: CallRule): Promise<void> {
+  await updateSettings({ callRules: settings.callRules.filter((rule) => rule.target !== callRule.target || rule.from !== callRule.from) });
+  showNotice(`${formatPatternForPeople(callRule.target)} is no longer unblocked for ${formatPatternForPeople(callRule.from)}.`, false);
+}
+
 async function addRequestPattern(url: string, kind: 'active' | 'skip'): Promise<void> {
   const pattern = normalizePattern(url);
   if (!pattern) {
@@ -979,6 +1005,9 @@ function getEffectiveRuleLabel(rule: EffectiveCorsRule): string {
   }
   if (rule.source === 'domain') {
     return `Effective rule: ${rule.domainType.replace('_', '-')} domain ${rule.pattern}`;
+  }
+  if (rule.source === 'call') {
+    return `Effective rule: unblocked call ${formatPatternForPeople(rule.pattern)} from ${formatPatternForPeople(rule.from)}`;
   }
   return `Effective rule: ${rule.pattern}`;
 }
@@ -1145,10 +1174,15 @@ function renderLinkList(target: HTMLUListElement | null, requests: DiscoveredReq
       activeButton.type = 'button';
       activeButton.className = 'icon-button';
       activeButton.textContent = '✓';
+      // Unblock just this call from the page that made it; the page's other calls are unaffected.
+      const callRule = getCallRuleForRequest(request.url, request.initiator);
       const trustPattern = getTrustPatternForRequest(request.url, request.initiator);
-      activeButton.setAttribute('aria-label', `Allow requests from ${trustPattern ?? request.url}`);
-      activeButton.title = `Allow requests from ${trustPattern ?? request.url}`;
-      activeButton.addEventListener('click', () => void addRequestPattern(trustPattern ?? request.url, 'active').then(() => showRowFeedback(feedback, 'Added')));
+      const activeLabel = callRule ? `Unblock this call from ${formatPatternForPeople(callRule.from)}` : `Trust ${formatPatternForPeople(trustPattern ?? request.url)}`;
+      activeButton.setAttribute('aria-label', activeLabel);
+      activeButton.title = activeLabel;
+      activeButton.addEventListener('click', () => void (callRule
+        ? addCallRule(callRule)
+        : addRequestPattern(trustPattern ?? request.url, 'active')).then(() => showRowFeedback(feedback, callRule ? 'Unblocked' : 'Added')));
       skipButton.type = 'button';
       skipButton.className = 'icon-button';
       skipButton.textContent = '−';

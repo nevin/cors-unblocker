@@ -111,6 +111,19 @@ export function defineSharedCases(h) {
       assert.equal(result.readable, true, result.error);
     });
 
+    it('unblocks one call without touching the page\'s other calls', async () => {
+      const one = freshPath('one');
+      const two = freshPath('two');
+      await h.configure({ enabled: true, allowAllHeaders: true, callRules: [{ target: `${h.api}${one}/*`, from: h.app }] });
+
+      assert.equal((await h.fetchFrom(h.app, `${h.api}${one}`)).readable, true);
+      assert.equal((await h.fetchFrom(h.app, `${h.api}${one}?page=2`)).readable, true);
+      const put = await h.fetchFrom(h.app, `${h.api}${one}/item`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: '{}' });
+      assert.equal(put.readable, true, put.error);
+      assert.equal((await h.fetchFrom(h.app, `${h.api}${two}`)).readable, false);
+      assert.equal((await h.fetchFrom(h.evil, `${h.api}${one}`)).readable, false);
+    });
+
     it('relaxes everything in global mode, except skipped URLs', async () => {
       await h.configure({ enabled: true, mode: 'global' });
       assert.equal((await h.fetchFrom(h.evil, `${h.api}/data`)).readable, true);
@@ -156,11 +169,33 @@ export function defineSharedCases(h) {
 
         const settings = mergeSettings({ enabled: false });
         const plan = planIssueFix(issue, settings);
-        assert.deepEqual(plan.fixes.map((fix) => fix.kind), ['enable', 'trust-page']);
+        assert.deepEqual(plan.fixes.map((fix) => fix.kind), ['enable', 'allow-call']);
         await h.configure({ ...settings, ...applyCorsFixes(settings, plan.fixes) });
 
         await waitFor(async () => (await tab.badge()) === '', 'the badge to clear after the fix');
         assert.equal((await tab.fetchHere(`${h.api}${path}`)).readable, true);
+      } finally {
+        await tab.close();
+      }
+    });
+
+    it('fixing one of two blocked calls unblocks only that call', async () => {
+      await h.configure({ enabled: false });
+      const tab = await h.openPage(h.app);
+      const fixedPath = freshPath('fix-me');
+      const otherPath = freshPath('leave-me');
+      try {
+        assert.equal((await tab.fetchHere(`${h.api}${fixedPath}`)).readable, false);
+        assert.equal((await tab.fetchHere(`${h.api}${otherPath}`)).readable, false);
+        await waitFor(async () => (await tab.issues()).length === 2, 'both blocked calls to be detected');
+
+        const issue = (await tab.issues()).find((candidate) => candidate.url.endsWith(fixedPath));
+        const settings = mergeSettings({ enabled: false });
+        await h.configure({ ...settings, ...applyCorsFixes(settings, planIssueFix(issue, settings).fixes) });
+
+        assert.equal((await tab.fetchHere(`${h.api}${fixedPath}`)).readable, true);
+        assert.equal((await tab.fetchHere(`${h.api}${otherPath}`)).readable, false);
+        await waitFor(async () => (await tab.badge()) === '1', 'the badge to count only the call still blocked');
       } finally {
         await tab.close();
       }
@@ -250,7 +285,7 @@ export function defineSharedCases(h) {
 
         const settings = mergeSettings({ enabled: false });
         const fixes = collectCorsFixes(planCorsIssues([issue], settings), { includeOverride: true });
-        assert.deepEqual(fixes.map((fix) => fix.kind), ['enable', 'trust-page', 'override-server', 'allow-credentials']);
+        assert.deepEqual(fixes.map((fix) => fix.kind), ['enable', 'allow-call', 'override-server', 'allow-credentials']);
         await h.configure({ ...settings, ...applyCorsFixes(settings, fixes) });
 
         const fixed = await tab.fetchHere(`${h.siteApi}${path}`, withCookies);

@@ -181,10 +181,12 @@ function getCardView(): CardView {
   }
 
   const trustFixes: CorsFix[] = [...(settings.enabled ? [] : [{ kind: 'enable' } as const]), { kind: 'trust-page', pattern: page }];
+  const unblockedHere = settings.callRules.filter((rule) => isCorsEnabledForRequest(pageUrl ?? '', pageUrl ?? undefined, { ...settings, whitelist: [rule.from], callRules: [] })).length;
+  const unblockedNote = unblockedHere > 0 ? ` ${pluralize(unblockedHere, 'call')} from this page ${unblockedHere === 1 ? 'is' : 'are'} unblocked individually.` : '';
   return {
     tone: 'neutral',
     title: `${host} isn't trusted`,
-    text: `Its calls to other sites keep their normal CORS behavior.${settings.detectCorsIssues ? ' Blocked calls will show up here.' : ''}`,
+    text: `Its calls to other sites keep their normal CORS behavior.${unblockedNote}${settings.detectCorsIssues ? ' Blocked calls will show up here.' : ''}`,
     primary: { label: `Trust ${host}`, run: () => applyFixes(trustFixes, `${host} is trusted. Reload the page to retry blocked calls.`) }
   };
 }

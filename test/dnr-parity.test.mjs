@@ -61,6 +61,8 @@ const baseRules = {
     { pattern: 'app.third.dev', type: 'third_party' }
   ],
   anyOriginTargets: ['api.open.dev', 'api.first.dev', 'https://api.paths.dev/v1/*'],
+  // One unblocked call: evil.com may read api.paths.dev/v2 and nothing else.
+  callRules: [{ target: 'https://api.paths.dev/v2/*', from: 'https://evil.com' }],
   methodOverrides: {
     'https://api.open.dev/users?id=1': ['HEAD'],
     'http://localhost:3000': ['GET'],
@@ -193,6 +195,17 @@ describe('known Chrome limitations', () => {
 
     const hidden = buildDynamicRules(mergeSettings({ enabled: true, whitelist: ['http://localhost:3000'], exposeAllHeaders: false }));
     assert.equal(simulateChrome(hidden, 'https://api.dev/data', 'http://localhost:3000').has('access-control-expose-headers'), false);
+  });
+
+  it('relaxes an unblocked call only for its page and target', () => {
+    const settings = mergeSettings({ enabled: true, callRules: [{ target: 'https://api.dev/users/*', from: 'http://localhost:3000' }] });
+    const rules = buildDynamicRules(settings);
+    const relaxed = (url, initiator) => simulateChrome(rules, url, initiator).has('access-control-allow-origin');
+
+    assert.equal(relaxed('https://api.dev/users', 'http://localhost:3000'), true);
+    assert.equal(relaxed('https://api.dev/users?page=2', 'http://localhost:3000'), true);
+    assert.equal(relaxed('https://api.dev/orders', 'http://localhost:3000'), false);
+    assert.equal(relaxed('https://api.dev/users', 'https://evil.example.com'), false);
   });
 });
 

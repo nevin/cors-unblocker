@@ -73,7 +73,8 @@ describe('SettingsController', () => {
       respectServerCors: true,
       detectCorsIssues: true,
       exposeAllHeaders: true,
-      pausedUntil: null
+      pausedUntil: null,
+      callRules: []
     });
 
     stored.set('mode', 'global');

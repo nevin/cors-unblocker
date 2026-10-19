@@ -1,4 +1,4 @@
-import { ExtensionSettings, getActivePatterns, getExplicitPatternOrigin, getPatternHost, isAnyOriginTarget, isCredentialsSupported, toUrlPatternRegExpSource } from './settings.js';
+import { CallRule, ExtensionSettings, getActivePatterns, getExplicitPatternOrigin, getPatternHost, isAnyOriginTarget, isCredentialsSupported, toUrlPatternRegExpSource } from './settings.js';
 
 // Structural mirror of chrome.declarativeNetRequest.Rule using plain strings, so rules can be built and
 // tested outside the browser. The Chrome background casts these to the real type when applying them.
@@ -27,6 +27,7 @@ export interface DnrRule {
 export const MAX_PATTERN_RULES = 250;
 export const MAX_SKIP_RULES = 250;
 export const MAX_METHOD_OVERRIDE_RULES = 250;
+export const MAX_CALL_RULES = 250;
 
 const GLOBAL_RULE_PRIORITY = 1;
 // Pattern lengths add at most 1,000, so every individual rule outranks every domain rule.
@@ -50,8 +51,10 @@ export function buildDynamicRules(settings: ExtensionSettings): DnrRule[] {
   // Only patterns getActivePatterns() approves get a rule; overrides never bypass the enabled/mode gate.
   const activePatterns = getActivePatterns(settings).slice(0, MAX_PATTERN_RULES);
   activePatterns.forEach((pattern) => rules.push(...createPatternRules(pattern, settings)));
+  settings.callRules.slice(0, MAX_CALL_RULES).forEach((callRule) => rules.push(...createCallRules(callRule, settings)));
 
-  const activePatternSet = new Set(activePatterns);
+  // A method override on a call rule's target applies only through that call rule.
+  const activePatternSet = new Set([...activePatterns, ...settings.callRules.map((rule) => rule.target)]);
   Object.entries(settings.methodOverrides)
     .filter(([pattern]) => !activePatternSet.has(pattern))
     .slice(0, MAX_METHOD_OVERRIDE_RULES)
@@ -101,6 +104,24 @@ function createPatternRules(pattern: string, settings: ExtensionSettings): Array
   }
 
   return rules;
+}
+
+// One unblocked call: responses from the target, for requests made by the `from` page only.
+function createCallRules({ target, from }: CallRule, settings: ExtensionSettings): Array<Omit<DnrRule, 'id'>> {
+  const initiatorDomain = toInitiatorDomain(from);
+  const credentialsActive = settings.allowCredentials && isCredentialsSupported(settings);
+  const responseOrigin = credentialsActive ? getExplicitPatternOrigin(from) : null;
+  // Without a plain domain Chrome cannot match the page, and with credentials it must name the page's origin.
+  if (!initiatorDomain || (credentialsActive && !responseOrigin)) {
+    return [];
+  }
+
+  const methods = settings.methodOverrides[target] ?? settings.allowMethods;
+  return [{
+    priority: INDIVIDUAL_RULE_PRIORITY_BASE + Math.min(target.length, 1000),
+    action: { type: 'modifyHeaders', responseHeaders: createResponseHeaders(methods, settings, credentialsActive, responseOrigin) },
+    condition: { ...toDnrUrlCondition(target), initiatorDomains: [initiatorDomain], resourceTypes: RESOURCE_TYPES }
+  }];
 }
 
 // Sets only the allowed methods, so it changes nothing unless another rule already relaxed the response.

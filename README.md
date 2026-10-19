@@ -36,15 +36,26 @@ Some calls on a page need help and some already work, for example an API that ha
 
 ## How rules work
 
-A rule trusts the pages it matches. Requests made **by** a trusted page get relaxed CORS headers, whatever API they call:
+You choose how much to relax, per request or per page.
+
+**Unblock one call.** "Fix" on a blocked call, and the ✓ on a request in the DevTools panel or Settings, unblock **just that URL, from just that page**. The page's other calls keep their normal CORS behaviour, so you can enable some requests and not others:
 
 ```text
-Rule: http://localhost:3000
+Unblocked call: api.staging.dev/v1/users, only from localhost:3000
+  localhost:3000 -> api.staging.dev/v1/users           relaxed (any query string or sub-path)
+  localhost:3000 -> api.staging.dev/v1/orders          untouched
+  evil.com       -> api.staging.dev/v1/users           untouched
+```
+
+**Trust a whole page.** "Trust localhost:3000" in the popup, or adding a page in Settings, relaxes every call that page makes:
+
+```text
+Trusted page: http://localhost:3000
   localhost:3000 -> api.staging.dev   relaxed
   evil.com       -> api.staging.dev   untouched
 ```
 
-So add the page you are developing, not the API it calls. A rule's own responses are opened to every website only when you turn on **Any site may read** for that rule. Global mode relaxes every request from every site.
+Either way, add the page you are developing, not the API it calls. A rule's own responses are opened to every website only when you turn on **Any site may read** for that rule. Global mode relaxes every request from every site.
 
 Skip rules win over everything else. Allowed methods come from the most specific rule that relaxed the request, and a method override on a specific URL (for example one with a query string) refines it.
 

@@ -1,4 +1,4 @@
-import { ExtensionSettings, formatPatternForPeople, getAllowedMethodsForRequest, getExplicitPatternOrigin, getTrustPatternForRequest, isCorsEnabledForRequest, isCorsSkippedForRequest, mergeSettings } from './settings.js';
+import { ExtensionSettings, formatPatternForPeople, getAllowedMethodsForRequest, getCallRuleForRequest, getExplicitPatternOrigin, getTrustPatternForRequest, matchesCallRule, isCorsEnabledForRequest, isCorsSkippedForRequest, mergeSettings } from './settings.js';
 
 export interface HttpHeader {
   name: string;
@@ -28,6 +28,7 @@ export interface CorsProblem {
 export type CorsFix =
   | { kind: 'enable' }
   | { kind: 'trust-page'; pattern: string }
+  | { kind: 'allow-call'; target: string; from: string }
   | { kind: 'allow-method'; method: string }
   | { kind: 'allow-headers' }
   | { kind: 'allow-credentials' }
@@ -177,9 +178,13 @@ export function planCorsFix(request: CorsRequest, problem: CorsProblem, serverSe
     fixes.push({ kind: 'enable' });
   }
 
+  // Unblock just this call from this page; the page's other calls keep their normal CORS behaviour.
   if (!isCorsEnabledForRequest(request.url, initiator, { ...settings, enabled: true })) {
+    const callRule = getCallRuleForRequest(request.url, request.origin);
     const pattern = getTrustPatternForRequest(request.url, request.origin);
-    if (pattern) {
+    if (callRule) {
+      fixes.push({ kind: 'allow-call', ...callRule });
+    } else if (pattern) {
       fixes.push({ kind: 'trust-page', pattern });
     }
   }
@@ -197,10 +202,11 @@ export function planCorsFix(request: CorsRequest, problem: CorsProblem, serverSe
     if (!settings.allowCredentials) {
       fixes.push({ kind: 'allow-credentials' });
     }
-    const exactPattern = getTrustPatternForRequest(request.url, request.origin);
-    const trustedExactly = settings.whitelist.some((pattern) => getExplicitPatternOrigin(pattern) === request.origin);
-    if (exactPattern && !trustedExactly && !fixes.some((fix) => fix.kind === 'trust-page')) {
-      fixes.push({ kind: 'trust-page', pattern: exactPattern });
+    const callRule = getCallRuleForRequest(request.url, request.origin);
+    const trustedExactly = settings.whitelist.some((pattern) => getExplicitPatternOrigin(pattern) === request.origin)
+      || settings.callRules.some((rule) => getExplicitPatternOrigin(rule.from) === request.origin && matchesCallRule(request.url, initiator, rule));
+    if (callRule && !trustedExactly && !fixes.some((fix) => fix.kind === 'trust-page' || fix.kind === 'allow-call')) {
+      fixes.push({ kind: 'allow-call', ...callRule });
     }
   }
 
@@ -230,6 +236,11 @@ export function applyCorsFixes(settings: ExtensionSettings, fixes: CorsFix[]): P
         next.whitelist = [...new Set([...(next.whitelist ?? settings.whitelist), fix.pattern])];
         next.skiplist = (next.skiplist ?? settings.skiplist).filter((pattern) => pattern !== fix.pattern);
         break;
+      case 'allow-call': {
+        const callRules = [...(next.callRules ?? settings.callRules), { target: fix.target, from: fix.from }];
+        next.callRules = [...new Map(callRules.map((rule) => [`${rule.from} ${rule.target}`, rule])).values()];
+        break;
+      }
       case 'allow-method':
         next.allowMethods = [...new Set([...(next.allowMethods ?? settings.allowMethods), fix.method])];
         break;
@@ -329,6 +340,8 @@ export function describeCorsFix(fix: CorsFix): string {
       return 'Turn CORS Unblocker on';
     case 'trust-page':
       return `Trust ${formatPatternForPeople(fix.pattern)}`;
+    case 'allow-call':
+      return `Unblock ${formatPatternForPeople(fix.target)} for ${formatPatternForPeople(fix.from)}`;
     case 'allow-method':
       return `Allow the ${fix.method} method`;
     case 'allow-headers':

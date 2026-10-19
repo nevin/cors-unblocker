@@ -69,7 +69,7 @@ describe('CORS fix planning', () => {
 
   it('lists every change needed while overrides are off', () => {
     const plan = planCorsFix(request('GET'), missing, false, mergeSettings({}));
-    assert.deepEqual(plan, { state: 'blocked', fixes: [{ kind: 'enable' }, { kind: 'trust-page', pattern: 'http://localhost:3000/*' }] });
+    assert.deepEqual(plan, { state: 'blocked', fixes: [{ kind: 'enable' }, { kind: 'allow-call', target: 'https://api.staging.dev/users/*', from: 'http://localhost:3000/*' }] });
   });
 
   it('reports a request the current rules already fix', () => {
@@ -132,15 +132,17 @@ describe('CORS issue lists', () => {
     issue('d', { url: 'https://legacy.internal/report', method: 'DELETE', preflight: true, problem: { reason: 'preflight-status', detail: '405' } })
   ];
 
-  it('collects each needed fix once, leaving server overrides for explicit confirmation', () => {
+  it('collects each needed fix once, unblocking each call on its own', () => {
     const settings = mergeSettings({ allowMethods: ['GET'] });
     const planned = planCorsIssues(issues, settings);
 
     assert.deepEqual(collectCorsFixes(planned), [
       { kind: 'enable' },
-      { kind: 'trust-page', pattern: 'http://localhost:3000/*' },
+      { kind: 'allow-call', target: 'https://api.staging.dev/v1/users/*', from: 'http://localhost:3000/*' },
+      { kind: 'allow-call', target: 'https://api.staging.dev/v1/orders/*', from: 'http://localhost:3000/*' },
       { kind: 'allow-method', method: 'PATCH' },
-      { kind: 'allow-headers' }
+      { kind: 'allow-headers' },
+      { kind: 'allow-call', target: 'https://auth.example.com/session/*', from: 'http://localhost:3000/*' }
     ]);
     assert.ok(collectCorsFixes(planned, { includeOverride: true }).some((fix) => fix.kind === 'override-server'));
   });
@@ -180,23 +182,23 @@ describe('credentialed calls', () => {
     const plan = planCorsFix(credentialed(), { reason: 'credentials-wildcard', detail: null }, true, mergeSettings({}));
     assert.deepEqual(plan.fixes, [
       { kind: 'enable' },
-      { kind: 'trust-page', pattern: 'http://localhost:3000/*' },
+      { kind: 'allow-call', target: 'https://api.staging.dev/users/*', from: 'http://localhost:3000/*' },
       { kind: 'override-server' },
       { kind: 'allow-credentials' }
     ]);
   });
 
-  it('requires trusting the exact origin when the page is only trusted by wildcard', () => {
+  it('requires unblocking from the exact origin when the page is only trusted by wildcard', () => {
     const settings = mergeSettings({ enabled: true, whitelist: ['localhost'], allowCredentials: true });
     assert.deepEqual(planCorsFix(credentialed(), { reason: 'missing-allow-origin', detail: null }, false, settings).fixes, [
-      { kind: 'trust-page', pattern: 'http://localhost:3000/*' }
+      { kind: 'allow-call', target: 'https://api.staging.dev/users/*', from: 'http://localhost:3000/*' }
     ]);
   });
 
   it('leaves global mode for credentialed calls', () => {
     const settings = mergeSettings({ enabled: true, mode: 'global', allowCredentials: true });
     const plan = planCorsFix(credentialed(), { reason: 'missing-allow-origin', detail: null }, false, settings);
-    assert.deepEqual(plan.fixes, [{ kind: 'whitelist-mode' }, { kind: 'trust-page', pattern: 'http://localhost:3000/*' }]);
+    assert.deepEqual(plan.fixes, [{ kind: 'whitelist-mode' }, { kind: 'allow-call', target: 'https://api.staging.dev/users/*', from: 'http://localhost:3000/*' }]);
     const fixed = mergeSettings({ ...settings, ...applyCorsFixes(settings, plan.fixes) });
     assert.deepEqual(planCorsFix(credentialed(), { reason: 'missing-allow-origin', detail: null }, false, fixed), { state: 'fixed', fixes: [] });
   });
@@ -204,6 +206,23 @@ describe('credentialed calls', () => {
   it('describes credentials problems', () => {
     assert.match(describeCorsProblem({ reason: 'credentials-wildcard', detail: null }, { origin: app }), /Allow-Origin: \*/);
     assert.match(describeCorsFix({ kind: 'allow-credentials' }), /Allow credentials/);
+  });
+});
+
+describe('unblocking one call at a time', () => {
+  it('unblocks exactly the fixed call, from exactly that page', () => {
+    const settings = mergeSettings({});
+    const plan = planCorsFix(request('GET'), { reason: 'missing-allow-origin', detail: null }, false, settings);
+    const fixed = mergeSettings({ ...settings, ...applyCorsFixes(settings, plan.fixes) });
+
+    assert.deepEqual(fixed.whitelist, []);
+    assert.deepEqual(fixed.callRules, [{ target: 'https://api.staging.dev/users/*', from: 'http://localhost:3000/*' }]);
+    assert.equal(isCorsEnabledForRequest('https://api.staging.dev/users', app, fixed), true);
+    assert.equal(isCorsEnabledForRequest('https://api.staging.dev/users?page=2', app, fixed), true);
+    assert.equal(isCorsEnabledForRequest('https://api.staging.dev/orders', app, fixed), false);
+    assert.equal(isCorsEnabledForRequest('https://other.api.dev/users', app, fixed), false);
+    assert.equal(isCorsEnabledForRequest('https://api.staging.dev/users', 'https://evil.example.com', fixed), false);
+    assert.equal(describeCorsFix(plan.fixes[1]), 'Unblock api.staging.dev/users for localhost:3000');
   });
 });
 
