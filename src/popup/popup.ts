@@ -3,6 +3,7 @@ import { CorsFix, CorsIssue, PlannedCorsIssue, applyCorsFixes, collectCorsFixes,
 import { loadTabCorsIssues, onTabCorsIssuesChanged } from '../shared/corsMonitor';
 import { PAUSE_DURATION_MS } from '../shared/pause';
 import { ExtensionSettings, formatPatternForPeople, getEffectiveCorsRuleForRequest, getTrustPatternForRequest, isCorsEnabledForRequest, mergeSettings } from '../shared/settings';
+import { formatTime, getStatusText } from '../shared/statusText';
 import { applyTheme } from '../shared/theme';
 
 const enabledInput = document.querySelector<HTMLInputElement>('#enabled');
@@ -107,16 +108,8 @@ function render(): void {
 }
 
 function renderHeader(): void {
-  const ruleCount = settings.whitelist.length + settings.domainRules.length;
-  let status = 'Off';
-  if (settings.pausedUntil !== null) {
-    status = `Paused until ${formatTime(settings.pausedUntil)}`;
-  } else if (settings.enabled) {
-    status = settings.mode === 'global' ? 'On · every website' : `On · ${pluralize(ruleCount, 'trusted page')}`;
-  }
-
   if (statusLine) {
-    statusLine.textContent = status;
+    statusLine.textContent = getStatusText(settings);
     statusLine.dataset.state = settings.enabled ? 'on' : 'off';
   }
   if (enabledInput) {
@@ -348,10 +341,6 @@ function getHost(url: string): string {
   } catch {
     return url;
   }
-}
-
-function formatTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 function pluralize(count: number, noun: string): string {

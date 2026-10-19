@@ -11,7 +11,7 @@ describe('ui source smoke checks', () => {
     const html = await source('src/devtools/panel.html');
     const script = await source('src/devtools/panel.ts');
 
-    ['id="devtools-panel"', 'id="control-card"', 'id="panel-header"', 'id="title-group"', 'id="title-icon"', 'src="../assets/icon.svg"', 'id="header-controls"', 'id="mode-selector"', 'id="configuration-card"', 'id="configuration-scope"', 'id="methods-section"', 'id="advanced-headers"', 'id="details-section"', 'id="details-tabs"', 'id="page-url-row"', 'id="coverage"', 'id="effective-rule"', 'id="effective-methods"', 'id="allow-page"', 'id="page-rule"', 'id="rule-defaults"', 'Rule defaults', 'Add domain rule', 'id="add-domain-rule"', 'Add active URL', 'Add skip URL', 'id="current-links"', 'id="rules-list"', 'id="current-link-filter-input"', 'id="request-scope-filter"', 'data-request-scope="current"', 'data-request-scope="other"', 'id="rules-filter-input"', 'id="rule-state-filter"', 'id="tab-backup"', 'id="panel-backup"', 'id="backup-actions"', 'id="import-preview"', 'id="import-preview-summary"', 'id="confirm-import-rules"', 'id="cancel-import-rules"', 'id="export-rules"', 'id="import-rules"', 'header-theme-control', 'class="advanced-options"', 'Requests', 'This page', 'Other tabs', 'Import/Export'].forEach((token) => {
+    ['id="devtools-panel"', 'id="control-card"', 'id="panel-header"', 'id="title-group"', 'id="title-icon"', 'src="../assets/icon.svg"', 'id="header-controls"', 'id="panel-status"', 'id="power-label"', 'id="open-settings"', 'id="global-warning"', 'id="leave-global"', 'id="configuration-card"', 'id="details-section"', 'id="details-tabs"', 'id="page-url-row"', 'id="coverage"', 'id="effective-rule"', 'id="effective-methods"', 'id="allow-page"', 'Add domain rule', 'id="add-domain-rule"', 'Add active URL', 'Add skip URL', 'id="current-links"', 'id="rules-list"', 'id="current-link-filter-input"', 'id="request-scope-filter"', 'data-request-scope="current"', 'data-request-scope="other"', 'id="rules-filter-input"', 'id="rule-state-filter"', 'id="tab-backup"', 'id="panel-backup"', 'id="backup-actions"', 'id="import-preview"', 'id="import-preview-summary"', 'id="confirm-import-rules"', 'id="cancel-import-rules"', 'id="export-rules"', 'id="import-rules"', 'Requests', 'This page', 'Other tabs', 'Import/Export'].forEach((token) => {
       assert.match(html, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     });
     assert.match(html, /id="tab-rules"[^>]*class="tab is-active"/);
@@ -26,6 +26,14 @@ describe('ui source smoke checks', () => {
     assert.doesNotMatch(html, /id="domain-rule-form"|id="domain-pattern"|id="domain-type"|id="domain-rules"/);
     assert.doesNotMatch(html, /id="link-filter-input"/);
     assert.doesNotMatch(html, /id="tab-other"|id="panel-other"|id="panel-domains"/);
+  });
+
+  it('DevTools panel leaves global settings to the options page', async () => {
+    const html = await source('src/devtools/panel.html');
+
+    assert.match(html, /<h1 id="control-title">CORS Unblocker<\/h1>/);
+    assert.doesNotMatch(html, /name="mode"|id="theme"|id="allow-all-headers"|id="allow-credentials"|class="allow-method"/);
+    assert.ok(html.indexOf('id="cors-blocked"') < html.indexOf('id="current-panel-title-row"'), 'blocked calls come before the request list');
   });
 
   it('options page exposes danger zone and managed lists', async () => {

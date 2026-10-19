@@ -331,3 +331,58 @@ input:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* On/off switch label, global-mode warning and link-style buttons, shared by the popup and DevTools panel. */
+.power {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.power__label {
+  min-width: 22px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.global-warning {
+  margin: 0;
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.link-button {
+  min-height: 0;
+  border: 0;
+  padding: 2px 0;
+  background: none;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.link-button:hover:not(:disabled) {
+  background: none;
+  color: var(--ink);
+}
+
+.link-button[data-tone='danger'] {
+  color: var(--danger);
+}
+
+.global-warning .link-button {
+  color: var(--danger);
+}

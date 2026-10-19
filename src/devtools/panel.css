@@ -31,17 +31,21 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 12px;
+}
+
+.panel__header .title-group {
+  min-width: 0;
+}
+
+.header-controls {
+  flex-shrink: 0;
 }
 
 .header-controls {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.header-theme-control {
-  min-width: 118px;
 }
 
 .title-group {
@@ -57,8 +61,8 @@ body {
 .title-icon {
   grid-area: icon;
   width: 42px;
-  height: 42px;
-  border-radius: 10px;
+  height: 32px;
+  border-radius: 8px;
 }
 
 .eyebrow {
@@ -72,7 +76,61 @@ body {
 h1 {
   grid-area: title;
   margin: 0;
-  font-size: 28px;
+  font-size: 18px;
+}
+
+.panel-status {
+  grid-area: subtitle;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.panel-status[data-state='on'] {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.header-link {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.header-link:hover {
+  color: var(--ink);
+}
+
+.global-warning {
+  margin-top: 12px;
+}
+
+.page-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.page-summary__main {
+  display: grid;
+  flex: 1 1 260px;
+  gap: 6px;
+  min-width: 0;
+}
+
+.page-summary .eyebrow {
+  margin: 0;
+}
+
+.page-summary code {
+  overflow-wrap: anywhere;
 }
 
 .subtitle {
@@ -140,28 +198,6 @@ h1 {
   color: var(--accent);
 }
 
-.scope-preview {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 8px 10px;
-  background: var(--surface-muted);
-}
-
-.scope-preview span {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.scope-preview code {
-  color: var(--ink);
-  font-size: 12px;
-}
-
 .effective-rule {
   margin: 0;
   border: 1px solid var(--line);
@@ -217,27 +253,6 @@ h1 {
   gap: 8px;
   border: 0;
   padding: 0;
-}
-
-.header-controls .modes {
-  min-width: 260px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 7px;
-  background: var(--surface-muted);
-}
-
-.header-controls .modes label {
-  min-height: 36px;
-  padding: 6px 8px;
-  background: var(--surface);
-}
-
-.header-controls .modes legend {
-  padding: 0 4px;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .modes legend {
@@ -656,17 +671,6 @@ h1 {
   }
 }
 
-@media (max-width: 680px) {
-  .panel__header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .header-controls {
-    width: 100%;
-    justify-content: space-between;
-  }
-}
 
 .rule-columns {
   display: grid;
@@ -1175,8 +1179,8 @@ h1 {
 .switch span {
   position: relative;
   display: block;
-  width: 48px;
-  height: 28px;
+  width: 44px;
+  height: 26px;
   border-radius: 999px;
   background: var(--switch-off);
   cursor: pointer;
@@ -1185,8 +1189,8 @@ h1 {
 
 .switch span::after {
   position: absolute;
-  top: 4px;
-  left: 4px;
+  top: 3px;
+  left: 3px;
   width: 20px;
   height: 20px;
   border-radius: 999px;
@@ -1200,5 +1204,44 @@ h1 {
 }
 
 .switch input:checked + span::after {
-  transform: translateX(20px);
+  transform: translateX(18px);
 }
+
+/* Narrow DevTools docks: wrap instead of clipping, and give content the width back. */
+@media (max-width: 640px) {
+  .panel {
+    padding: 12px;
+  }
+
+  .control-card,
+  .tab-panel {
+    padding: 12px;
+  }
+
+  .panel__header {
+    flex-wrap: wrap;
+  }
+
+  .tabs {
+    overflow-x: auto;
+  }
+
+  .rule-heading,
+  .rule-actions,
+  .backup-actions,
+  .panel-title-row {
+    flex-wrap: wrap;
+  }
+
+  .link-list li {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'url'
+      'status'
+      'meta'
+      'methods'
+      'feedback'
+      'actions';
+  }
+}
+

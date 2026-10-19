@@ -8,7 +8,8 @@ import {
 } from '../shared/browserApi';
 import { CorsFix, CorsIssue, PlannedCorsIssue, applyCorsFixes, collectCorsFixes, describeCorsCall, describeCorsFix, describeCorsProblem, isOpenCorsIssue, planCorsIssues, planIssueFix } from '../shared/corsDiagnosis';
 import { loadTabCorsIssues, onTabCorsIssuesChanged } from '../shared/corsMonitor';
-import { DEFAULT_ALLOW_METHODS, CorsMode, DomainRuleType, EffectiveCorsRule, ExtensionSettings, exportRules, getAllowedMethodsForRequest, getEffectiveCorsRuleForRequest, getTrustPatternForRequest, importRules, isCorsEnabledForRequest, isCorsSkippedForRequest, isCredentialsSupported, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
+import { DEFAULT_ALLOW_METHODS, DomainRuleType, EffectiveCorsRule, ExtensionSettings, exportRules, formatPatternForPeople, getAllowedMethodsForRequest, getEffectiveCorsRuleForRequest, getTrustPatternForRequest, importRules, isCorsEnabledForRequest, isCorsSkippedForRequest, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
+import { getStatusText } from '../shared/statusText';
 import { applyTheme } from '../shared/theme';
 
 type RuleEntry = { pattern: string; kind: 'url' | 'domain'; list: 'active' | 'skip'; domainType?: DomainRuleType };
@@ -16,12 +17,15 @@ type RuleEntry = { pattern: string; kind: 'url' | 'domain'; list: 'active' | 'sk
 const enabledInput = document.querySelector<HTMLInputElement>('#enabled');
 const noticeElement = document.querySelector<HTMLElement>('#notice');
 const pageUrlElement = document.querySelector<HTMLElement>('#page-url');
-const pageRuleElement = document.querySelector<HTMLElement>('#page-rule');
 const coverageElement = document.querySelector<HTMLElement>('#coverage');
 const effectiveRuleElement = document.querySelector<HTMLElement>('#effective-rule');
 const effectiveMethodsElement = document.querySelector<HTMLElement>('#effective-methods');
 const addDomainRuleButton = document.querySelector<HTMLButtonElement>('#add-domain-rule');
 const allowPageButton = document.querySelector<HTMLButtonElement>('#allow-page');
+const powerLabel = document.querySelector<HTMLElement>('#power-label');
+const panelStatus = document.querySelector<HTMLElement>('#panel-status');
+const globalWarning = document.querySelector<HTMLElement>('#global-warning');
+const leaveGlobalButton = document.querySelector<HTMLButtonElement>('#leave-global');
 const currentLinks = document.querySelector<HTMLUListElement>('#current-links');
 const copyCurrentLinksButton = document.querySelector<HTMLButtonElement>('#copy-current-links');
 const rulesList = document.querySelector<HTMLUListElement>('#rules-list');
@@ -29,16 +33,7 @@ const rulesStatus = document.querySelector<HTMLElement>('#rules-status');
 const addActiveRuleButton = document.querySelector<HTMLButtonElement>('#add-active-rule');
 const addSkipRuleButton = document.querySelector<HTMLButtonElement>('#add-skip-rule');
 const ruleFilterButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-rule-filter]')];
-const methodInputs = [...document.querySelectorAll<HTMLInputElement>('.allow-method')];
-const selectAllMethodsButton = document.querySelector<HTMLButtonElement>('#select-all-methods');
-const selectDefaultMethodsButton = document.querySelector<HTMLButtonElement>('#select-default-methods');
-const allowAllHeadersInput = document.querySelector<HTMLInputElement>('#allow-all-headers');
-const allowCredentialsInput = document.querySelector<HTMLInputElement>('#allow-credentials');
-const credentialsHint = document.querySelector<HTMLElement>('#credentials-hint');
-const headersWarning = document.querySelector<HTMLElement>('#headers-warning');
-const methodsError = document.querySelector<HTMLElement>('#methods-error');
 const rulesError = document.querySelector<HTMLElement>('#rules-error');
-const modeInputs = [...document.querySelectorAll<HTMLInputElement>('input[name="mode"]')];
 const tabButtons = [...document.querySelectorAll<HTMLButtonElement>('.tab')];
 const tabPanels = [...document.querySelectorAll<HTMLElement>('.tab-panel')];
 const currentLinkFilterInput = document.querySelector<HTMLInputElement>('#current-link-filter-input');
@@ -47,7 +42,6 @@ const clearCurrentLinkFilterButton = document.querySelector<HTMLButtonElement>('
 const clearRulesFilterButton = document.querySelector<HTMLButtonElement>('#clear-rules-filter');
 const requestScopeHelp = document.querySelector<HTMLElement>('#request-scope-help');
 const requestScopeButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-request-scope]')];
-const themeSelect = document.querySelector<HTMLSelectElement>('#theme');
 const exportRulesButton = document.querySelector<HTMLButtonElement>('#export-rules');
 const importRulesButton = document.querySelector<HTMLButtonElement>('#import-rules');
 const importRulesFile = document.querySelector<HTMLInputElement>('#import-rules-file');
@@ -80,6 +74,8 @@ let suppressNextSettingsRender = false;
 let pendingImportedSettings: Partial<ExtensionSettings> | null = null;
 let requestScope: 'current' | 'other' = 'current';
 let corsIssues: CorsIssue[] = [];
+// Once someone picks a tab, the panel stops switching tabs on its own.
+let userPickedTab = false;
 // Calls that failed and that the current settings now fix; they need a page reload to retry.
 const fixedSinceOpen = new Set<string>();
 const settingsController = new SettingsController();
@@ -131,48 +127,12 @@ async function initialize(): Promise<void> {
   }
 
   enabledInput?.addEventListener('change', () => {
-    void updateSettings({ enabled: Boolean(enabledInput.checked) });
+    // Switching off by hand ends any pause too: off means off.
+    void updateSettings(enabledInput.checked ? { enabled: true } : { enabled: false, pausedUntil: null });
   });
-
-  modeInputs.forEach((input) => {
-    input.addEventListener('change', () => {
-      if (!input.checked) {
-        return;
-      }
-
-      if (input.value === 'global' && !globalThis.confirm('Enable CORS overrides for every website?')) {
-        render();
-        return;
-      }
-
-      void updateSettings({ mode: input.value as CorsMode });
-    });
-  });
-
-  methodInputs.forEach((input) => {
-    input.addEventListener('change', () => {
-      const allowMethods = methodInputs.filter((methodInput) => methodInput.checked).map((methodInput) => methodInput.value);
-      if (allowMethods.length === 0) {
-        input.checked = true;
-        return;
-      }
-      void updateSettings({ allowMethods });
-    });
-  });
-
-  selectAllMethodsButton?.addEventListener('click', () => {
-    void updateSettings({ allowMethods: methodInputs.map((methodInput) => methodInput.value) });
-  });
-
-  selectDefaultMethodsButton?.addEventListener('click', () => {
-    void updateSettings({ allowMethods: [...DEFAULT_ALLOW_METHODS] });
-  });
-
-  allowAllHeadersInput?.addEventListener('change', () => {
-    void updateSettings({ allowAllHeaders: allowAllHeadersInput.checked });
-  });
-  allowCredentialsInput?.addEventListener('change', () => {
-    void updateSettings({ allowCredentials: allowCredentialsInput.checked });
+  leaveGlobalButton?.addEventListener('click', () => {
+    void updateSettings({ mode: 'whitelist' });
+    showNotice('Only trusted pages get relaxed CORS now.', false);
   });
 
   // Trusts the page's origin and turns overrides on, like the popup, so one click makes the page work.
@@ -181,7 +141,7 @@ async function initialize(): Promise<void> {
       void applyCorsFixesFromPanel([
         ...(settings.enabled ? [] : [{ kind: 'enable' } as const]),
         { kind: 'trust-page', pattern: inspectedPattern }
-      ], `${inspectedPattern} is trusted. Reload the page to retry blocked calls.`);
+      ], `${formatPatternForPeople(inspectedPattern)} is trusted. Reload the page to retry blocked calls.`);
     }
   });
 
@@ -194,13 +154,17 @@ async function initialize(): Promise<void> {
   });
 
   tabButtons.forEach((button) => {
-    button.addEventListener('click', () => activateTab(button));
+    button.addEventListener('click', () => {
+      userPickedTab = true;
+      activateTab(button);
+    });
     button.addEventListener('keydown', (event) => {
       if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
         return;
       }
 
       event.preventDefault();
+      userPickedTab = true;
       const currentIndex = tabButtons.indexOf(button);
       const nextIndex = event.key === 'Home'
         ? 0
@@ -238,9 +202,6 @@ async function initialize(): Promise<void> {
       rulesFilterInput.focus();
       renderRules();
     }
-  });
-  themeSelect?.addEventListener('change', () => {
-    void updateSettings({ theme: themeSelect.value as ExtensionSettings['theme'] });
   });
   exportRulesButton?.addEventListener('click', exportCurrentRules);
   importRulesButton?.addEventListener('click', () => importRulesFile?.click());
@@ -598,7 +559,7 @@ async function saveNewRule(value: string, kind: 'active' | 'skip', methodOptions
     return;
   }
   if (methods.length === 0) {
-    setFieldError(methodsError, 'Select at least one access method.');
+    setFieldError(rulesError, 'Select at least one access method.');
     return;
   }
 
@@ -720,7 +681,7 @@ async function saveRuleEdit(value: string, pattern: string, kind: 'active' | 'sk
   const nextOverrides = { ...settings.methodOverrides };
   const methods = [...methodOptions.querySelectorAll<HTMLInputElement>('input:checked')].map((input) => input.value);
   if (methods.length === 0) {
-    setFieldError(methodsError, 'Select at least one access method.');
+    setFieldError(rulesError, 'Select at least one access method.');
     return;
   }
 
@@ -812,6 +773,11 @@ function renderCorsBlocked(): void {
   const bulkFixes = collectCorsFixes(planned);
 
   corsBlockedSection.hidden = !settings.detectCorsIssues;
+  // Blocked calls are why most people open this panel, so show them first.
+  const requestsTab = tabButtons.find((button) => button.id === 'tab-current');
+  if (open.length > 0 && !userPickedTab && requestsTab && !requestsTab.classList.contains('is-active')) {
+    activateTab(requestsTab);
+  }
   corsBlockedSection.dataset.state = open.length > 0 ? 'blocked' : 'clear';
   if (blockedTabCount) {
     blockedTabCount.hidden = open.length === 0;
@@ -938,42 +904,23 @@ function render(): void {
 
 function syncSettingsControls(): void {
   enabledInput!.checked = settings.enabled;
-  modeInputs.forEach((input) => {
-    input.checked = input.value === settings.mode;
-  });
-  methodInputs.forEach((input) => {
-    input.checked = settings.allowMethods.includes(input.value);
-  });
-  if (allowAllHeadersInput) {
-    allowAllHeadersInput.checked = settings.allowAllHeaders;
+  if (powerLabel) {
+    powerLabel.textContent = settings.enabled ? 'On' : 'Off';
   }
-  if (allowCredentialsInput) {
-    allowCredentialsInput.checked = settings.allowCredentials;
-    allowCredentialsInput.disabled = !isCredentialsSupported(settings);
+  if (panelStatus) {
+    panelStatus.textContent = getStatusText(settings);
+    panelStatus.dataset.state = settings.enabled ? 'on' : 'off';
   }
-  if (credentialsHint) {
-    credentialsHint.textContent = isCredentialsSupported(settings)
-      ? 'Reload open tabs after changing this option.'
-      : 'Unavailable in Global mode. Add an explicit http(s) origin pattern first.';
-  }
-  if (headersWarning) {
-    headersWarning.hidden = !(settings.allowCredentials && settings.allowAllHeaders);
-  }
-  if (themeSelect) {
-    themeSelect.value = settings.theme;
+  if (globalWarning) {
+    globalWarning.hidden = !(settings.enabled && settings.mode === 'global');
   }
 }
 
 function renderCoverage(): void {
-  const activeCount = settings.whitelist.length + settings.domainRules.length;
-  setStatus(settings.enabled ? activeCount === 0 && settings.mode !== 'global' ? 'Enabled, but no active patterns' : 'Enabled' : 'Disabled', false);
   pageUrlElement!.textContent = inspectedUrl ?? 'Unavailable for this DevTools page';
-  if (pageRuleElement) {
-    pageRuleElement.textContent = inspectedPattern ?? 'Unavailable';
-  }
   const hasInspectedPage = Boolean(inspectedUrl);
   const covered = Boolean(inspectedUrl && isCorsEnabledForRequest(inspectedUrl, inspectedUrl, settings));
-  coverageElement!.textContent = covered ? 'CORS active' : hasInspectedPage ? 'Not active' : '';
+  coverageElement!.textContent = covered ? 'Trusted' : hasInspectedPage ? 'Not trusted' : '';
   coverageElement!.dataset.covered = String(covered);
   coverageElement!.hidden = !hasInspectedPage;
   renderEffectiveRule();
@@ -981,7 +928,8 @@ function renderCoverage(): void {
   const inspectedPageSkipped = Boolean(inspectedUrl && isCorsSkippedForRequest(inspectedUrl, inspectedUrl, settings));
   allowPageButton!.hidden = !inspectedPattern || covered;
   allowPageButton!.disabled = !inspectedPattern || covered;
-  allowPageButton!.textContent = inspectedPageSkipped ? 'Move to active' : 'Allow this page';
+  allowPageButton!.textContent = inspectedPattern ? `Trust ${formatPatternForPeople(inspectedPattern)}` : 'Trust this page';
+  allowPageButton!.title = inspectedPageSkipped ? 'Your skip rules exclude this page; trusting it removes the matching skip rule.' : '';
 }
 
 function renderEffectiveRule(): void {
@@ -995,10 +943,11 @@ function renderEffectiveRule(): void {
     return;
   }
 
+  // "Off" and "not trusted" are already shown above; only say which rule covers or skips the page.
   const rule = getEffectiveCorsRuleForRequest(inspectedUrl, inspectedUrl, settings);
   effectiveRuleElement.textContent = getEffectiveRuleLabel(rule);
   effectiveRuleElement.dataset.state = rule.state;
-  effectiveRuleElement.hidden = false;
+  effectiveRuleElement.hidden = rule.state === 'inactive';
 }
 
 function renderEffectiveMethods(isCovered: boolean): void {
