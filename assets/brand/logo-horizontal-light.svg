@@ -1,11 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="5.35 13 253.3 70" role="img" aria-label="CORS Unblocker">
-  <style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;600&amp;display=block');
-    .w{font-family:Inter,'IBM Plex Sans','Helvetica Neue',Arial,sans-serif}</style>
-  <g>
-    <path id="gateway" d="M54.65 25.1A27 27 0 1 0 54.65 70.9" fill="none" stroke="#0F2D4A" stroke-width="16" stroke-linecap="round"/>
-    <path id="request-shaft" d="M40.35 48H72.65" fill="none" stroke="#0FAF91" stroke-width="13" stroke-linecap="round"/>
-    <path id="request-head" d="M71.65 33L88.65 48L71.65 63Z" fill="#0FAF91" stroke="#0FAF91" stroke-width="4" stroke-linejoin="round"/>
-  </g>
-  <text class="w" x="110.65" y="53.27" font-size="52" font-weight="600" letter-spacing="0.6" fill="#0F2D4A" text-anchor="start">CORS</text>
-  <text class="w" x="110.65" y="80.54" font-size="21" font-weight="500" letter-spacing="1.9" fill="#64748B" text-anchor="start">UNBLOCKER</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2060 512" role="img" aria-label="CORS Unblocker">
+  <title>CORS Unblocker</title>
+  <defs><clipPath id="cap"><rect x="0" y="612" width="2000" height="68"/></clipPath></defs>
+  <g transform="translate(16 16) scale(3.75)"><rect x="4" y="4" width="120" height="120" rx="26" fill="#0B2C5F"/><g transform="translate(-3 0)"><path d="M46 28H96L80 46H54L40 64L54 82H80L96 100H46L22 76V52Z" fill="#FFFFFF"/><path d="M44 64L49 59H96L94 50L112 64L94 78L96 69H49Z" fill="#FF6B00"/></g></g><g transform="translate(540 0)"><g transform="translate(-112 -208)"><g fill="#0B2C5F"><path d="M270 248H505L405 341H300L222 415L290 485H395L485 573H265L152 465V360Z"/><path d="M460 382V325Q460 315 468 307L520 255Q527 248 540 248H725Q745 248 760 265L795 305Q805 316 805 330V382H720V355Q720 330 695 330H575Q548 330 548 355V382Z"/><path d="M460 450V500Q460 530 488 550L512 573H725Q752 573 775 550L805 520V450H720V465Q720 490 695 490H575Q548 490 548 465V450Z"/><path d="M780 248H1000Q1040 248 1062 285L1074 305Q1088 330 1088 355V382H1003Q1012 355 1002 345Q992 332 970 332H850Z"/><path d="M835 450H1057Q1030 485 990 483L1065 573H940Z"/><path d="M1195 248H1450L1365 330H1250Q1210 330 1213 360Q1215 375 1228 382H1115V340Q1115 325 1130 310Z"/><path d="M1310 450H1418Q1422 460 1422 480V505L1335 573H1085L1170 490H1290Q1320 490 1322 470Q1323 458 1310 450Z"/></g>
+  <path d="M240 415L262 395H1458L1448 341L1568 415L1448 490L1458 435H262Z" fill="#FF6B00"/>
+  <g fill="none" stroke="#3A3D42" stroke-width="18" stroke-linejoin="round" clip-path="url(#cap)"><path d="M169 612V650Q169 671 190 671H218Q239 671 239 650V612"/><path d="M337 680V612M407 612V680"/><path d="M337 621L407 671"/><path d="M506 680V621H562Q575 621 575 633.5Q575 646 562 646H506M506 646H566Q579 646 579 658.5Q579 671 566 671H497"/><path d="M666 612V671H727"/><path d="M817 621H862Q874 621 874 633V659Q874 671 862 671H817Q805 671 805 659V633Q805 621 817 621Z"/><path d="M1027 621H973Q961 621 961 633V659Q961 671 973 671H1027"/><path d="M1107 612V680M1107 646H1135L1186 612M1135 646L1186 680"/><path d="M1338 621H1283Q1271 621 1271 633V659Q1271 671 1283 671H1338M1271 646H1332"/><path d="M1423 680V621H1490Q1501 621 1501 633.5Q1501 646 1490 646H1423M1472 646L1505 680"/></g></g></g>
 </svg>

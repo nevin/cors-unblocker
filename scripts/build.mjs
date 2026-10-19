@@ -60,7 +60,7 @@ await copyCss(join(root, 'src/devtools/panel.css'), join(outputDirectory, 'devto
 await copyCss(join(root, 'src/shared/shared.css'), join(outputDirectory, 'devtools/shared.css'));
 await mkdir(join(outputDirectory, 'assets'), { recursive: true });
 await copyFile(join(root, 'assets/icon.svg'), join(outputDirectory, 'assets/icon.svg'));
-for (const size of [16, 32, 48, 128]) {
+for (const size of [16, 32, 48, 64, 96, 128]) {
   await copyFile(join(root, `assets/icon-${size}.png`), join(outputDirectory, `assets/icon-${size}.png`));
 }
 

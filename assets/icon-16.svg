@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="CORS Unblocker">
+  <title>CORS Unblocker</title>
+  <defs><clipPath id="cap"><rect x="0" y="612" width="2000" height="68"/></clipPath></defs>
+  <rect width="16" height="16" rx="3.5" fill="#0B2C5F"/><path d="M5 1.5H12.5L10.5 4H6.5L4 8L6.5 12H10.5L12.5 14.5H5L1.5 11V5Z" fill="#FFFFFF"/><path d="M6 8L7 7H11V5L15 8L11 11V9H7Z" fill="#FF6B00"/>
+</svg>
