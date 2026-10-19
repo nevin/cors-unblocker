@@ -1,9 +1,9 @@
 {
   "name": "cors-unblocker",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "license": "GPL-3.0-only",
-  "description": "A browser extension for selectively relaxing CORS response headers during local web development, with whitelist and global modes.",
+  "description": "Fix CORS errors while you develop: see which calls are blocked, then relax CORS headers only for the pages you trust.",
   "type": "module",
   "scripts": {
     "brand": "node scripts/brand.mjs",

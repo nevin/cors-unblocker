@@ -1243,3 +1243,9 @@ h1 {
   }
 }
 
+
+/* Action labels such as "Fix all" stay on one line however long the summary beside them is. */
+.cors-blocked__actions button,
+.cors-blocked__row-actions button {
+  white-space: nowrap;
+}

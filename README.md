@@ -7,7 +7,7 @@
 
 # CORS Unblocker
 
-A browser extension for selectively relaxing CORS response headers during local web development, with whitelist and global modes.
+Fix CORS errors while you develop: see which calls are blocked, then relax CORS headers only for the pages you trust. For Chrome, Edge and Firefox.
 
 ## Safety
 
@@ -114,6 +114,10 @@ http://localhost:3000
 
   Firefox's WebDriver cannot script extension pages, so the Firefox tests use a test-only build (`dist-e2e/firefox`, from `node scripts/build.mjs firefox --e2e`) that adds a small bridge on `*.test` pages. `verify-build` checks the bridge never reaches a normal or release build.
 - `npm run lint:firefox` - Validate the Firefox build with Mozilla's add-on linter
+
+## Privacy
+
+CORS Unblocker never sends data anywhere. See [PRIVACY.md](PRIVACY.md).
 
 ## Releasing
 

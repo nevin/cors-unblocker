@@ -1,8 +1,9 @@
 {
   "manifest_version": 2,
   "name": "CORS Unblocker",
-  "version": "0.3.0",
-  "description": "A browser extension for selectively relaxing CORS response headers during local web development, with whitelist and global modes.",
+  "version": "0.3.1",
+  "description": "Fix CORS errors while you develop: see which calls are blocked, then relax CORS headers only for the pages you trust.",
+  "homepage_url": "https://github.com/nevin/cors-unblocker",
   "browser_action": {
     "default_popup": "popup/index.html",
     "default_title": "CORS Unblocker",
@@ -27,7 +28,6 @@
     "<all_urls>",
     "storage",
     "alarms",
-    "activeTab",
     "webRequest",
     "webRequestBlocking"
   ],
