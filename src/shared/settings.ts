@@ -41,6 +41,8 @@ export interface ExtensionSettings {
   detectCorsIssues: boolean;
   // Let pages read every response header (such as X-Total-Count), not just the CORS-safelisted few.
   exposeAllHeaders: boolean;
+  // While paused, overrides are off (enabled is false) until this time, when the background turns them back on.
+  pausedUntil: number | null;
 }
 
 export type EffectiveCorsRule =
@@ -68,6 +70,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   ,respectServerCors: true
   ,detectCorsIssues: true
   ,exposeAllHeaders: true
+  ,pausedUntil: null
 };
 
 export const SETTINGS_KEY = 'corsDevControlSettings';
@@ -235,6 +238,8 @@ export function mergeSettings(value: Partial<ExtensionSettings> | undefined): Ex
     ,respectServerCors: typeof value?.respectServerCors === 'boolean' ? value.respectServerCors : DEFAULT_SETTINGS.respectServerCors
     ,detectCorsIssues: typeof value?.detectCorsIssues === 'boolean' ? value.detectCorsIssues : DEFAULT_SETTINGS.detectCorsIssues
     ,exposeAllHeaders: typeof value?.exposeAllHeaders === 'boolean' ? value.exposeAllHeaders : DEFAULT_SETTINGS.exposeAllHeaders
+    // Switching on ends any pause.
+    ,pausedUntil: value?.enabled !== true && typeof value?.pausedUntil === 'number' && value.pausedUntil > 0 ? value.pausedUntil : null
   };
 }
 
@@ -249,6 +254,22 @@ function normalizeAnyOriginTargets(value: Partial<ExtensionSettings> | undefined
     ...normalizeDomainRules(value.domainRules).map((rule) => rule.pattern)
   ]);
   return normalizePatterns(value.anyOriginTargets).filter((pattern) => rulePatterns.has(pattern));
+}
+
+// How a pattern reads to people: 'http://localhost:3000/*' becomes 'localhost:3000'. Schemes and
+// trailing wildcards are syntax, not meaning, for the sites people trust day to day.
+export function formatPatternForPeople(pattern: string): string {
+  if (pattern === '<all_urls>') {
+    return 'every website';
+  }
+
+  const match = /^(?:\*|https?|file):\/\/([^/]*)(\/.*)?$/.exec(pattern);
+  if (!match) {
+    return pattern;
+  }
+
+  const path = match[2] ?? '';
+  return `${match[1] ?? ''}${path === '/*' || path === '/' ? '' : path.replace(/\/\*$/, '')}`;
 }
 
 export function getActivePatterns(settings: ExtensionSettings): string[] {

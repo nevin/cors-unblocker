@@ -53,19 +53,16 @@ Chrome rules are generated from the same pattern matcher Firefox uses, and a par
 
 ## Features
 
-- Master on/off toggle
-- Whitelist-only mode
-- Global mode for broad local debugging
-- One-click allowance for the current tab
-- Current-tab coverage status
-- Searchable whitelist management
-- CORS controls available in the browser Developer Tools panel
-- Applies to all matched web request types in Chrome and Firefox
-- In whitelist mode, relaxes requests made by trusted pages; a rule's responses are opened to other sites only with a per-rule opt-in
-- Allowed methods control the CORS preflight response and do not block network requests.
-- Chrome/Edge Manifest V3 build using Declarative Net Request
-- Firefox build using response header interception (Firefox 140 or later)
-- Request discovery records only while overrides are enabled, drops query strings and fragments, and is kept in session storage, so it is never written to disk and is cleared when the browser closes
+- **A popup that answers "what's wrong with this page?"** It shows one card for the current tab with a single next step: fix the blocked calls, reload to retry, trust this page, or resume after a pause.
+- **Blocked-call detection** with a red count on the toolbar icon, even while overrides are off.
+- **Trusted pages:** requests made by a page you trust get relaxed CORS headers; a rule's own responses are opened to other sites only with a per-rule opt-in.
+- **Pause 1 hour** turns overrides off and back on by itself.
+- **Respects server CORS headers** by default, so calls that already work keep working.
+- Global mode for broad debugging (in Settings, with a warning in the popup while it's on).
+- A DevTools **CORS** panel with every blocked call, its reason and a fix, plus the full rule editor.
+- Allowed methods shape the preflight response and never block requests.
+- Chrome/Edge Manifest V3 build using Declarative Net Request; Firefox build using response header interception (Firefox 140 or later).
+- The request log is recorded only while overrides are on, without query strings or fragments, in session storage. It is never written to disk and is cleared when the browser closes.
 
 ## Setup
 

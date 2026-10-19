@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "cors-unblocker",
+  "name": "CORS Unblocker",
   "version": "0.2.0",
   "description": "A browser extension for selectively relaxing CORS response headers during local web development, with whitelist and global modes.",
   "action": {
     "default_popup": "popup/index.html",
-    "default_title": "cors-unblocker",
+    "default_title": "CORS Unblocker",
     "default_icon": {
       "16": "assets/icon-16.png",
       "32": "assets/icon-32.png",
@@ -22,6 +22,7 @@
   "permissions": [
     "declarativeNetRequest",
     "storage",
+    "alarms",
     "activeTab",
     "webRequest"
   ],

@@ -41,16 +41,16 @@ describe('ui source smoke checks', () => {
     const popup = await source('src/popup/index.html');
     const panel = await source('src/devtools/panel.html');
 
-    ['id="cors-issues"', 'id="cors-issues-list"', 'id="fix-cors"', 'id="reload-tab"', 'id="override-server"'].forEach((token) => assert.ok(popup.includes(token), token));
+    ['id="page-card"', 'id="issue-list"', 'id="fix-details"', 'id="primary-action"', 'id="secondary-action"', 'id="pause"', 'id="open-settings"'].forEach((token) => assert.ok(popup.includes(token), token));
     ['id="cors-blocked"', 'id="cors-blocked-list"', 'id="fix-all-cors"', 'id="reload-inspected"', 'id="blocked-tab-count"'].forEach((token) => assert.ok(panel.includes(token), token));
   });
 
-  it('popup uses page-scoped copy', async () => {
+  it('popup keeps settings out and leads with one product name', async () => {
     const html = await source('src/popup/index.html');
 
-    assert.match(html, /Current page/);
-    assert.match(html, /Allow this page/);
-    assert.doesNotMatch(html, /Allow this site|Current tab/);
+    assert.match(html, /<h1>CORS Unblocker<\/h1>/);
+    assert.match(html, /Pause 1 hour/);
+    assert.doesNotMatch(html, /name="mode"|id="theme"|CORS Control|Whitelist/);
   });
 
   it('shared styles define reusable chip and disclosure patterns', async () => {

@@ -72,7 +72,8 @@ describe('SettingsController', () => {
       anyOriginTargets: [],
       respectServerCors: true,
       detectCorsIssues: true,
-      exposeAllHeaders: true
+      exposeAllHeaders: true,
+      pausedUntil: null
     });
 
     stored.set('mode', 'global');
@@ -130,3 +131,19 @@ describe('request log', () => {
     assert.equal(stored.has(REQUEST_LOG_KEY), false);
   });
 });
+
+describe('pausing', () => {
+  it('saves the pause end whenever overrides are switched on or off', async () => {
+    const controller = new SettingsController();
+    await controller.initialize();
+
+    await controller.update({ enabled: false, pausedUntil: Date.now() + 60_000 });
+    assert.equal(typeof stored.get('pausedUntil'), 'number');
+
+    // Switching on ends the pause; the stored field must not keep the old end time.
+    await controller.update({ enabled: true });
+    assert.equal(stored.get('pausedUntil'), null);
+    assert.equal(controller.settings.pausedUntil, null);
+  });
+});
+

@@ -3,67 +3,50 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CORS</title>
+    <title>CORS Unblocker</title>
     <link rel="stylesheet" href="shared.css" />
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <main class="shell">
       <header class="header">
-        <div>
-          <p class="eyebrow">Dev tool</p>
-          <h1>CORS Control</h1>
-          <p class="subtitle">Relax response headers while you build.</p>
+        <img class="header__icon" src="../assets/icon.svg" alt="" width="28" height="28" />
+        <div class="header__text">
+          <h1>CORS Unblocker</h1>
+          <p id="status-line" class="status-line" aria-live="polite">Loading…</p>
         </div>
-        <label class="switch" aria-label="Toggle CORS override">
-          <input id="enabled" type="checkbox" />
-          <span></span>
+        <label class="power">
+          <span id="power-label" class="power__label">Off</span>
+          <span class="switch">
+            <input id="enabled" type="checkbox" aria-label="CORS overrides" aria-describedby="status-line" />
+            <span aria-hidden="true"></span>
+          </span>
         </label>
       </header>
 
-      <section class="status" id="status" aria-live="polite">Disabled</section>
+      <p id="global-warning" class="global-warning" role="alert" hidden>
+        Global mode: every website gets relaxed CORS.
+        <button id="leave-global" type="button" class="link-button">Trust pages only</button>
+      </p>
+
+      <section id="page-card" class="card" aria-labelledby="card-title" aria-live="polite">
+        <h2 id="card-title" class="card__title">Checking this page…</h2>
+        <p id="card-text" class="card__text"></p>
+        <ul id="issue-list" class="issue-list" hidden></ul>
+        <details id="fix-details" class="fix-details" hidden>
+          <summary>What will change</summary>
+          <ul id="fix-list" class="fix-list"></ul>
+        </details>
+        <button id="primary-action" type="button" class="card__primary" hidden></button>
+        <button id="secondary-action" type="button" class="link-button" hidden></button>
+      </section>
+
       <p id="notice" class="notice" role="status" aria-live="polite"></p>
 
-      <section class="cors-issues" id="cors-issues" aria-labelledby="cors-issues-title" hidden>
-        <p class="eyebrow" id="cors-issues-title">CORS on this page</p>
-        <p class="cors-issues__summary" id="cors-issues-summary" aria-live="polite"></p>
-        <ul class="cors-issues__list" id="cors-issues-list"></ul>
-        <p class="cors-issues__plan" id="cors-fix-plan" hidden></p>
-        <div class="cors-issues__actions">
-          <button id="fix-cors" type="button" hidden>Fix blocked calls</button>
-          <button id="reload-tab" type="button" class="secondary-button" hidden>Reload page to retry</button>
-          <button id="override-server" type="button" class="danger-button" hidden>Override server CORS headers</button>
-        </div>
-      </section>
-
-      <section class="current-site" aria-labelledby="current-site-title">
-        <p class="eyebrow" id="current-site-title">Current page</p>
-        <p class="current-site__origin" id="current-site">Checking current page...</p>
-        <p class="current-site__coverage" id="current-coverage" aria-live="polite"></p>
-        <button id="allow-current" type="button" disabled>Allow this page</button>
-      </section>
-
-      <fieldset class="modes">
-        <legend>Mode</legend>
-        <label>
-          <input type="radio" name="mode" value="whitelist" />
-          <span><strong>Whitelist</strong><small>Only approved sites</small></span>
-        </label>
-        <label>
-          <input type="radio" name="mode" value="global" />
-          <span><strong>Global</strong><small>Every website</small></span>
-        </label>
-        <p class="warning" id="mode-warning" hidden>This changes responses for every website. Use global mode only while debugging.</p>
-      </fieldset>
-
-      <button id="manage" type="button">Manage rules</button>
-      <label class="theme-control" for="theme">Appearance
-        <select id="theme">
-          <option value="system">System</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
-      </label>
+      <footer class="footer">
+        <button id="pause" type="button" class="link-button" hidden>Pause 1 hour</button>
+        <button id="open-settings" type="button" class="link-button">Settings</button>
+      </footer>
     </main>
     <script type="module" src="popup.js"></script>
   </body>

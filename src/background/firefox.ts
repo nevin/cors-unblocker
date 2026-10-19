@@ -1,6 +1,7 @@
 import { clearPersistedRequestLog, loadSettings, onSettingsChanged, recordDiscoveredRequest } from '../shared/browserApi';
 import { CorsMonitor } from '../shared/corsMonitor';
 import { ALLOW_ALL_HEADERS_VALUE } from '../shared/dnrRules';
+import { listenForPauseEnd, syncPauseAlarm } from '../shared/pause';
 import { ExtensionSettings, getAllowedMethodsForRequest, isCorsEnabledForRequest, isCredentialsSupported } from '../shared/settings';
 
 interface FirefoxHeader {
@@ -66,9 +67,12 @@ browser.webRequest.onCompleted.addListener((details) => corsMonitor.onRequestEnd
 browser.webRequest.onErrorOccurred.addListener((details) => corsMonitor.onRequestEnded(details.requestId), API_REQUESTS);
 browser.tabs.onRemoved.addListener((tabId) => void corsMonitor.clearTab(tabId));
 
+listenForPauseEnd();
+
 onSettingsChanged((settings) => {
   currentSettings = settings;
   void corsMonitor.refreshBadges();
+  void syncPauseAlarm(settings);
 });
 
 browser.webRequest.onHeadersReceived.addListener(
@@ -81,6 +85,7 @@ void refreshSettings();
 
 async function refreshSettings(): Promise<void> {
   currentSettings = await loadSettings();
+  await syncPauseAlarm(currentSettings);
 }
 
 function handleHeadersReceived(details: HeadersReceivedDetails): BlockingResponse {

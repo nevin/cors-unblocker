@@ -4,7 +4,7 @@ type StorageChangeHandler = (settings: ExtensionSettings) => void;
 export type SettingsListener = (settings: ExtensionSettings) => void;
 
 export const runtimeApi = globalThis.browser ?? globalThis.chrome;
-const SETTINGS_FIELDS = ['enabled', 'mode', 'whitelist', 'skiplist', 'allowMethods', 'methodOverrides', 'theme', 'allowAllHeaders', 'allowCredentials', 'domainRules', 'anyOriginTargets', 'respectServerCors', 'detectCorsIssues', 'exposeAllHeaders'] as const satisfies ReadonlyArray<keyof ExtensionSettings>;
+const SETTINGS_FIELDS = ['enabled', 'mode', 'whitelist', 'skiplist', 'allowMethods', 'methodOverrides', 'theme', 'allowAllHeaders', 'allowCredentials', 'domainRules', 'anyOriginTargets', 'respectServerCors', 'detectCorsIssues', 'exposeAllHeaders', 'pausedUntil'] as const satisfies ReadonlyArray<keyof ExtensionSettings>;
 
 type StoredSettings = Partial<ExtensionSettings> & {
   [SETTINGS_KEY]?: Partial<ExtensionSettings>;
@@ -27,9 +27,11 @@ export async function saveSettings(settings: ExtensionSettings): Promise<void> {
 
 export async function updateSettings(next: Partial<ExtensionSettings>): Promise<ExtensionSettings> {
   const settings = mergeSettings({ ...(await loadSettings()), ...next });
-  // Rule edits can drop opt-ins for removed patterns, so persist that list whenever rules change.
+  // Rule edits can drop opt-ins for removed patterns, and switching on ends a pause, so persist those
+  // derived fields whenever what they depend on changes.
   const changed = SETTINGS_FIELDS.filter((field) => next[field] !== undefined
-    || (field === 'anyOriginTargets' && (next.whitelist !== undefined || next.domainRules !== undefined)));
+    || (field === 'anyOriginTargets' && (next.whitelist !== undefined || next.domainRules !== undefined))
+    || (field === 'pausedUntil' && next.enabled !== undefined));
 
   await runtimeApi.storage.local.set({
     [SETTINGS_KEY]: settings,

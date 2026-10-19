@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { exportRules, getAllowedMethodsForRequest, getEffectiveCorsRuleForRequest, getPatternHost, getTrustPatternForRequest, importRules, isCorsEnabledForRequest, isRequestMethodAllowed, matchesUrlPattern, mergeSettings, normalizeMethodOverridePattern, normalizePattern, normalizePatterns } from '../dist-test/shared/settings.js';
+import { exportRules, formatPatternForPeople, getAllowedMethodsForRequest, getEffectiveCorsRuleForRequest, getPatternHost, getTrustPatternForRequest, importRules, isCorsEnabledForRequest, isRequestMethodAllowed, matchesUrlPattern, mergeSettings, normalizeMethodOverridePattern, normalizePattern, normalizePatterns } from '../dist-test/shared/settings.js';
 
 describe('settings pattern normalization', () => {
   it('keeps all urls token', () => {
@@ -318,4 +318,21 @@ describe('settings pattern normalization', () => {
     assert.equal(getTrustPatternForRequest('https://api.staging.dev/users', null), 'https://api.staging.dev/users/*');
     assert.equal(getTrustPatternForRequest('https://api.staging.dev/users', 'chrome-extension://abc'), 'https://api.staging.dev/users/*');
   });
+
+  it('formats patterns the way people read sites', () => {
+    assert.equal(formatPatternForPeople('http://localhost:3000/*'), 'localhost:3000');
+    assert.equal(formatPatternForPeople('*://api.staging.dev/*'), 'api.staging.dev');
+    assert.equal(formatPatternForPeople('*://*.internal.test/*'), '*.internal.test');
+    assert.equal(formatPatternForPeople('https://api.dev/v1/*'), 'api.dev/v1');
+    assert.equal(formatPatternForPeople('<all_urls>'), 'every website');
+  });
+
+  it('keeps a pause only while overrides are off', () => {
+    const until = Date.now() + 60_000;
+    assert.equal(mergeSettings({ enabled: false, pausedUntil: until }).pausedUntil, until);
+    assert.equal(mergeSettings({ enabled: true, pausedUntil: until }).pausedUntil, null);
+    assert.equal(mergeSettings({ enabled: false, pausedUntil: -5 }).pausedUntil, null);
+    assert.equal(mergeSettings({}).pausedUntil, null);
+  });
 });
+

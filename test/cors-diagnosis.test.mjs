@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { applyCorsFixes, collectCorsFixes, countOpenIssues, describeCorsCall, describeCorsFix, describeCorsProblem, findCorsProblem, isCorsRequest, planCorsFix, planCorsIssues, readCorsRequest } from '../dist-test/shared/corsDiagnosis.js';
+import { applyCorsFixes, collectCorsFixes, countOpenIssues, describeCorsCall, describeCorsFix, describeCorsProblem, findCorsProblem, summarizeCorsProblem, isCorsRequest, planCorsFix, planCorsIssues, readCorsRequest } from '../dist-test/shared/corsDiagnosis.js';
 import { isCorsEnabledForRequest, mergeSettings } from '../dist-test/shared/settings.js';
 
 const app = 'http://localhost:3000';
@@ -107,10 +107,16 @@ describe('CORS fix planning', () => {
     assert.deepEqual(planCorsFix(req, missing, false, fixed), { state: 'fixed', fixes: [] });
   });
 
+  it('summarizes problems in a few words', () => {
+    assert.equal(summarizeCorsProblem({ reason: 'preflight-status', detail: '405' }), 'Server answered 405');
+    assert.equal(summarizeCorsProblem({ reason: 'credentials-wildcard', detail: null }), 'Sends cookies, but the server allows *');
+    assert.equal(describeCorsFix({ kind: 'enable' }), 'Turn CORS Unblocker on');
+  });
+
   it('describes problems and fixes in plain words', () => {
     assert.match(describeCorsProblem({ reason: 'preflight-status', detail: '404' }, { origin: app }), /404.*cannot change status codes/);
     assert.match(describeCorsProblem({ reason: 'origin-mismatch', detail: 'https://prod.example.com' }, { origin: app }), /allows https:\/\/prod\.example\.com, not http:\/\/localhost:3000/);
-    assert.equal(describeCorsFix({ kind: 'trust-page', pattern: 'http://localhost:3000/*' }), 'Trust http://localhost:3000/*');
+    assert.equal(describeCorsFix({ kind: 'trust-page', pattern: 'http://localhost:3000/*' }), 'Trust localhost:3000');
   });
 });
 

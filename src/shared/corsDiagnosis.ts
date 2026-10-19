@@ -1,4 +1,4 @@
-import { ExtensionSettings, getAllowedMethodsForRequest, getExplicitPatternOrigin, getTrustPatternForRequest, isCorsEnabledForRequest, isCorsSkippedForRequest, mergeSettings } from './settings.js';
+import { ExtensionSettings, formatPatternForPeople, getAllowedMethodsForRequest, getExplicitPatternOrigin, getTrustPatternForRequest, isCorsEnabledForRequest, isCorsSkippedForRequest, mergeSettings } from './settings.js';
 
 export interface HttpHeader {
   name: string;
@@ -284,6 +284,26 @@ export function describeCorsCall(issue: CorsIssue): string {
   return `${issue.preflight ? 'Preflight for ' : ''}${issue.method} ${path}`;
 }
 
+// A few words for tight spaces such as the popup; describeCorsProblem() gives the full explanation.
+export function summarizeCorsProblem(problem: CorsProblem): string {
+  switch (problem.reason) {
+    case 'missing-allow-origin':
+      return 'No Access-Control-Allow-Origin header';
+    case 'origin-mismatch':
+      return `Server only allows ${problem.detail ?? 'another origin'}`;
+    case 'credentials-wildcard':
+      return 'Sends cookies, but the server allows *';
+    case 'credentials-not-allowed':
+      return 'Sends cookies, but no Allow-Credentials';
+    case 'preflight-status':
+      return `Server answered ${problem.detail ?? 'with an error'}`;
+    case 'method-not-allowed':
+      return `Preflight rejects ${problem.detail ?? 'the method'}`;
+    case 'headers-not-allowed':
+      return `Preflight rejects header ${problem.detail ?? ''}`.trim();
+  }
+}
+
 export function describeCorsProblem(problem: CorsProblem, request: Pick<CorsRequest, 'origin'>): string {
   switch (problem.reason) {
     case 'missing-allow-origin':
@@ -306,9 +326,9 @@ export function describeCorsProblem(problem: CorsProblem, request: Pick<CorsRequ
 export function describeCorsFix(fix: CorsFix): string {
   switch (fix.kind) {
     case 'enable':
-      return 'Turn on CORS overrides';
+      return 'Turn CORS Unblocker on';
     case 'trust-page':
-      return `Trust ${fix.pattern}`;
+      return `Trust ${formatPatternForPeople(fix.pattern)}`;
     case 'allow-method':
       return `Allow the ${fix.method} method`;
     case 'allow-headers':

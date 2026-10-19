@@ -1,6 +1,7 @@
 import { clearPersistedRequestLog, loadSettings, onSettingsChanged, recordDiscoveredRequest } from '../shared/browserApi';
 import { CorsMonitor } from '../shared/corsMonitor';
 import { buildDynamicRules } from '../shared/dnrRules';
+import { listenForPauseEnd, syncPauseAlarm } from '../shared/pause';
 import { ExtensionSettings } from '../shared/settings';
 
 let ruleUpdateQueue = Promise.resolve();
@@ -47,10 +48,13 @@ chrome.webRequest.onCompleted.addListener((details) => corsMonitor.onRequestEnde
 chrome.webRequest.onErrorOccurred.addListener((details) => corsMonitor.onRequestEnded(details.requestId), API_REQUESTS);
 chrome.tabs.onRemoved.addListener((tabId) => void corsMonitor.clearTab(tabId));
 
+listenForPauseEnd();
+
 onSettingsChanged((settings) => {
   currentSettings = settings;
   queueApplyRules(settings);
   void corsMonitor.refreshBadges();
+  void syncPauseAlarm(settings);
 });
 
 void refreshRules();
@@ -58,6 +62,7 @@ void refreshRules();
 async function refreshRules(): Promise<void> {
   currentSettings = await loadSettings();
   await queueApplyRules(currentSettings);
+  await syncPauseAlarm(currentSettings);
 }
 
 function queueApplyRules(settings: ExtensionSettings): Promise<void> {

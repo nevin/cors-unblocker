@@ -405,3 +405,31 @@ describe('credentials, exposed headers and Vary in a real browser', () => {
     assert.equal((await fetchFrom(siteApp, `${siteApi}${freshPath('vary')}`, withCookies)).readable, true);
   });
 });
+
+describe('pausing in a real browser', () => {
+  const readEnabled = () => worker.evaluate(async () => {
+    const stored = await chrome.storage.local.get(['enabled', 'pausedUntil', 'corsDevControlSettings']);
+    return { enabled: stored.enabled ?? stored.corsDevControlSettings?.enabled, pausedUntil: stored.pausedUntil ?? stored.corsDevControlSettings?.pausedUntil ?? null };
+  });
+
+  it('turns overrides back on when the pause ends', async () => {
+    await configure({ enabled: false, pausedUntil: Date.now() + 1_500, whitelist: [app] });
+    assert.equal((await fetchFrom(app, `${api}${freshPath('paused')}`)).readable, false);
+
+    await waitFor(async () => (await readEnabled()).enabled === true, 'the pause to end', 10_000);
+    assert.equal((await readEnabled()).pausedUntil, null);
+    const expectedRules = buildDynamicRules(mergeSettings({ enabled: true, whitelist: [app] })).length;
+    await waitFor(async () => (await worker.evaluate(() => chrome.declarativeNetRequest.getDynamicRules())).length === expectedRules, 'rules to return');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal((await fetchFrom(app, `${api}${freshPath('resumed')}`)).readable, true);
+  });
+
+  it('ends a pause that expired while the extension was asleep', async () => {
+    await worker.evaluate(async () => {
+      await chrome.storage.local.clear();
+      await chrome.storage.local.set({ corsDevControlSettings: { enabled: false, pausedUntil: Date.now() - 1_000 } });
+    });
+    await waitFor(async () => (await readEnabled()).enabled === true, 'the expired pause to end');
+  });
+});
+
