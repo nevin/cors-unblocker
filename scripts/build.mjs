@@ -64,6 +64,9 @@ for (const size of [16, 32, 48, 128]) {
   await copyFile(join(root, `assets/icon-${size}.png`), join(outputDirectory, `assets/icon-${size}.png`));
 }
 
+// GPL distribution requires the license text to travel with the extension.
+await copyFile(join(root, 'LICENSE'), join(outputDirectory, 'LICENSE'));
+
 const manifest = JSON.parse(await readFile(join(root, `manifest.${target}.json`), 'utf8'));
 manifest.version = packageJson.version;
 await writeFile(join(outputDirectory, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
