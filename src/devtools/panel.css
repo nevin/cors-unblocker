@@ -235,8 +235,9 @@ h1 {
 }
 
 .link-status[data-state='blocked'] {
-  background: var(--danger);
-  color: var(--white);
+  border: 1px solid var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .link-status[data-state='skipped'] {
@@ -452,12 +453,12 @@ h1 {
   gap: 12px;
 }
 
-.cors-blocked h3 {
+.tab-panel .cors-blocked h2 {
   margin: 0;
   font-size: 14px;
 }
 
-.cors-blocked[data-state='blocked'] h3 {
+.tab-panel .cors-blocked[data-state='blocked'] h2 {
   color: var(--danger);
 }
 
