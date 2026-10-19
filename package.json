@@ -1,6 +1,6 @@
 {
   "name": "cors-unblocker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "license": "GPL-3.0-only",
   "description": "A browser extension for selectively relaxing CORS response headers during local web development, with whitelist and global modes.",
