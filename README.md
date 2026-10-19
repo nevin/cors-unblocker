@@ -113,6 +113,15 @@ http://localhost:3000
 - `npm run test:e2e` - Load the Chrome build in a real Chromium and run cross-origin requests against a local test server (run `npx playwright install chromium` once first)
 - `npm run lint:firefox` - Validate the Firefox build with Mozilla's add-on linter
 
+## Releasing
+
+1. Set the version in `package.json` (`npm version 0.3.0 --no-git-tag-version`) and in both `manifest.*.json` files.
+2. Write the notes in `docs/releases/v0.3.0.md`.
+3. Commit, push, and wait for CI to pass.
+4. Tag and push: `git tag -a v0.3.0 -m "CORS Unblocker 0.3.0" && git push origin v0.3.0`.
+
+The **Release** workflow then re-runs every check on the tagged commit, builds both zips from it, and publishes the GitHub release with the zips and their SHA-256 checksums. To try it without publishing, run **Actions > Release > Run workflow**: you get the zips as workflow artifacts.
+
 ## License
 
 Copyright (C) 2026 Nevin Paul

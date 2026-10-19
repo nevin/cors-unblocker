@@ -1,0 +1,80 @@
+name: Release
+
+# Push a tag like v0.3.0 to publish a release. Run it by hand (Actions > Release > Run workflow) for a
+# dry run: every check and the packaged zips, kept as workflow artifacts, without publishing anything.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Check the tag matches package.json and has release notes
+        if: github.ref_type == 'tag'
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+          if [ ! -f "docs/releases/$GITHUB_REF_NAME.md" ]; then
+            echo "::error::Missing release notes: docs/releases/$GITHUB_REF_NAME.md"
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run lint:firefox
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+      # Builds both zips from this exact commit.
+      - run: npm run package
+      - name: Write checksums
+        run: |
+          cd release
+          sha256sum ./*.zip | sed 's# \./# #' > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Keep the zips (dry run)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cors-unblocker-dry-run
+          path: release/
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            cat "docs/releases/$GITHUB_REF_NAME.md"
+            printf '\n### SHA-256\n```\n'
+            cat release/SHA256SUMS.txt
+            printf '```\n'
+          } > notes.md
+          prerelease=''
+          case "$GITHUB_REF_NAME" in *-*) prerelease='--prerelease' ;; esac
+          gh release create "$GITHUB_REF_NAME" release/*.zip release/SHA256SUMS.txt \
+            --title "CORS Unblocker $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            --verify-tag $prerelease
