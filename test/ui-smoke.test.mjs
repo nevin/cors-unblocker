@@ -36,6 +36,15 @@ describe('ui source smoke checks', () => {
     assert.ok(html.indexOf('id="cors-blocked"') < html.indexOf('id="current-panel-title-row"'), 'blocked calls come before the request list');
   });
 
+  it('Settings has a section menu, toast feedback, per-call rules and a rule filter', async () => {
+    const html = await source('src/options/index.html');
+
+    ['class="section-nav"', 'href="#rules-section"', 'href="#backup-section"', 'id="toast"', 'value="call"', 'id="call-from"', 'id="rule-filter"', 'id="behavior-section"', 'id="detection-section"', 'id="appearance-section"', 'id="backup-section"'].forEach((token) => assert.ok(html.includes(token), token));
+    for (const match of html.matchAll(/href="#([a-z-]+)"/g)) {
+      assert.ok(html.includes(`id="${match[1]}"`), `menu link #${match[1]} has a target`);
+    }
+  });
+
   it('options page exposes danger zone and managed lists', async () => {
     const html = await source('src/options/index.html');
 

@@ -6,7 +6,7 @@ import {
   onDiscoveredRequestsChanged,
   resetSettings
 } from '../shared/browserApi';
-import { CallRule, DEFAULT_ALLOW_METHODS, CorsMode, ExtensionSettings, exportRules, formatPatternForPeople, getCallRuleForRequest, getTrustPatternForRequest, importRules, isCredentialsSupported, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
+import { CallRule, DEFAULT_ALLOW_METHODS, CorsMode, DomainRuleType, ExtensionSettings, exportRules, formatPatternForPeople, getCallRuleForRequest, getTrustPatternForRequest, importRules, isCredentialsSupported, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
 import { applyTheme } from '../shared/theme';
 import { WELCOME_HASH } from '../shared/welcome';
 
@@ -17,6 +17,13 @@ const countElement = document.querySelector<HTMLElement>('#count');
 const list = document.querySelector<HTMLUListElement>('#list');
 const discoveredList = document.querySelector<HTMLUListElement>('#discovered-list');
 const ruleKindSelect = document.querySelector<HTMLSelectElement>('#rule-kind');
+const patternLabel = document.querySelector<HTMLElement>('#pattern-label');
+const patternNote = document.querySelector<HTMLElement>('#pattern-note');
+const callFromField = document.querySelector<HTMLElement>('#call-from-field');
+const callFromInput = document.querySelector<HTMLInputElement>('#call-from');
+const ruleFilterInput = document.querySelector<HTMLInputElement>('#rule-filter');
+const toastElement = document.querySelector<HTMLElement>('#toast');
+const sectionNavLinks = [...document.querySelectorAll<HTMLAnchorElement>('.section-nav a')];
 const methodInputs = [...document.querySelectorAll<HTMLInputElement>('.allow-method')];
 const selectAllMethodsButton = document.querySelector<HTMLButtonElement>('#select-all-methods');
 const selectDefaultMethodsButton = document.querySelector<HTMLButtonElement>('#select-default-methods');
@@ -46,6 +53,11 @@ const dismissWelcomeButton = document.querySelector<HTMLButtonElement>('#dismiss
 let settings: ExtensionSettings;
 let discoveredRequests: DiscoveredRequest[] = [];
 let messageTimer: ReturnType<typeof setTimeout> | undefined;
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
+let ruleFilter = '';
+// The rule being edited in place, and its draft values, so a re-render keeps the edit open.
+let editing: { key: string; pattern: string; from: string } | null = null;
+const openRuleOptions = new Set<string>();
 let pendingImportedSettings: Partial<ExtensionSettings> | null = null;
 const settingsController = new SettingsController();
 
@@ -77,6 +89,19 @@ async function initialize(): Promise<void> {
     event.preventDefault();
     void addPattern();
   });
+  ruleKindSelect?.addEventListener('change', updateFormForKind);
+  updateFormForKind();
+  ruleFilterInput?.addEventListener('input', () => {
+    ruleFilter = ruleFilterInput.value.trim().toLowerCase();
+    renderRules();
+  });
+  // Collapsed sections open when their menu link is used.
+  sectionNavLinks.forEach((link) => link.addEventListener('click', () => {
+    const target = document.querySelector(link.hash);
+    if (target instanceof HTMLDetailsElement) {
+      target.open = true;
+    }
+  }));
 
   methodInputs.forEach((input) => {
     input.addEventListener('change', () => {
@@ -118,7 +143,8 @@ async function initialize(): Promise<void> {
   });
 
   enabledInput?.addEventListener('change', () => {
-    void updateSettings({ enabled: enabledInput.checked });
+    // Switching off by hand ends any pause too: off means off, as in the popup and panel.
+    void updateSettings(enabledInput.checked ? { enabled: true } : { enabled: false, pausedUntil: null });
   });
   modeInputs.forEach((input) => {
     input.addEventListener('change', () => {
@@ -144,19 +170,68 @@ async function initialize(): Promise<void> {
   cancelImportRulesButton?.addEventListener('click', clearImportPreview);
 }
 
+const FORM_KINDS = {
+  enabled: { label: 'Page', placeholder: 'localhost:3000 or *.example.dev', note: 'Every call this page makes gets relaxed CORS headers. Hosts, full URLs, wildcard subdomains (*.example.dev) and paths ending in /* all work.' },
+  call: { label: 'API URL', placeholder: 'https://api.staging.dev/v1/users', note: 'Only requests to this URL (with any query string or sub-path), made by that page, are relaxed. The page\'s other calls keep normal CORS.' },
+  skip: { label: 'URL', placeholder: 'api.staging.dev/admin', note: 'Matching requests always keep their original CORS headers, whatever other rules say.' }
+} as const;
+
+function getFormKind(): keyof typeof FORM_KINDS {
+  const value = ruleKindSelect?.value;
+  return value === 'call' || value === 'skip' ? value : 'enabled';
+}
+
+function updateFormForKind(): void {
+  const kind = FORM_KINDS[getFormKind()];
+  if (patternLabel) {
+    patternLabel.textContent = kind.label;
+  }
+  if (input) {
+    input.placeholder = kind.placeholder;
+  }
+  if (patternNote) {
+    patternNote.textContent = kind.note;
+  }
+  if (callFromField) {
+    callFromField.hidden = getFormKind() !== 'call';
+  }
+  setFormError('');
+}
+
 async function addPattern(): Promise<void> {
   const rawPattern = input?.value.trim() ?? '';
   const normalized = normalizePattern(rawPattern);
-  const kind = ruleKindSelect?.value === 'skip' ? 'skip' : 'enabled';
+  const kind = getFormKind();
 
   if (!normalized) {
-    setMessage(`Could not add "${rawPattern || 'empty value'}". Use a hostname, a full http(s) URL, or a wildcard such as *.example.dev.`, true);
+    setFormError(`Could not add "${rawPattern || 'empty value'}". Use a hostname, a full http(s) URL, or a wildcard such as *.example.dev.`);
+    input?.focus();
+    return;
+  }
+
+  if (kind === 'call') {
+    const rawFrom = callFromInput?.value.trim() ?? '';
+    const from = normalizePattern(rawFrom);
+    if (!from) {
+      setFormError('Enter the page that makes the call, such as localhost:3000.');
+      callFromInput?.focus();
+      return;
+    }
+    if (settings.callRules.some((rule) => rule.target === normalized && rule.from === from)) {
+      setFormError(`${formatPatternForPeople(normalized)} is already unblocked for ${formatPatternForPeople(from)}.`);
+      return;
+    }
+    setFormError('');
+    await addCallRule({ target: normalized, from });
+    if (input) {
+      input.value = '';
+    }
     return;
   }
 
   const existing = kind === 'enabled' ? settings.whitelist : settings.skiplist;
   if (existing.includes(normalized)) {
-    setMessage(`${formatPatternForPeople(normalized)} is already ${kind === 'enabled' ? 'trusted' : 'skipped'}.`, true);
+    setFormError(`${formatPatternForPeople(normalized)} is already ${kind === 'enabled' ? 'trusted' : 'skipped'}.`);
     return;
   }
 
@@ -169,6 +244,7 @@ async function addPattern(): Promise<void> {
     if (input) {
       input.value = '';
     }
+    setFormError('');
     setMessage(kind === 'enabled' ? `${formatPatternForPeople(normalized)} is trusted.` : `${formatPatternForPeople(normalized)} is skipped.`, false);
     render();
   } catch {
@@ -270,19 +346,6 @@ async function removeCallRule(callRule: CallRule, feedbackTarget?: HTMLElement):
   }
 }
 
-function editPattern(pattern: string, kind: 'enabled' | 'skip' = 'enabled'): void {
-  if (!input) {
-    return;
-  }
-
-  input.value = pattern;
-  if (ruleKindSelect) {
-    ruleKindSelect.value = kind;
-  }
-  input.focus();
-  setMessage('Loaded into the form above. Change it and press Add; then remove the old one.', false);
-}
-
 // Shown when the background opens Settings after a fresh install; dismissing it removes the marker
 // from the address, so a reload does not bring it back.
 function showWelcomeIfRequested(): void {
@@ -350,13 +413,9 @@ function render(): void {
   renderDiscoveredRequests();
 
   if (countElement) {
-    const parts = [
-      `${settings.whitelist.length} trusted`,
-      ...(settings.domainRules.length ? [`${settings.domainRules.length} domain`] : []),
-      ...(settings.callRules.length ? [`${settings.callRules.length} unblocked ${settings.callRules.length === 1 ? 'call' : 'calls'}`] : []),
-      ...(settings.skiplist.length ? [`${settings.skiplist.length} skipped`] : [])
-    ];
-    countElement.textContent = parts.join(' · ');
+    // Each group heading shows its own count; this is the total.
+    const total = settings.whitelist.length + settings.domainRules.length + settings.callRules.length + settings.skiplist.length;
+    countElement.textContent = `${total} ${total === 1 ? 'rule' : 'rules'}`;
   }
 }
 
@@ -503,113 +562,267 @@ async function updateMethods(allowMethods: string[]): Promise<void> {
 type RuleKind = 'enabled' | 'skip' | 'domain' | 'call';
 
 interface RuleRow {
+  key: string;
   pattern: string;
   kind: RuleKind;
-  label: string;
+  label?: string;
   from?: string;
 }
 
-// One list for every rule: trusted pages first, then domain rules, then skip rules.
+const DOMAIN_LABELS: Record<DomainRuleType, string> = {
+  both: 'This site, as a page and as an API',
+  first_party: 'This site as an API, for any page',
+  third_party: 'This site\'s pages, calling any API'
+};
+
+// Every rule, grouped by what it does, compact, filterable, and editable in place.
 function renderRules(): void {
   if (!list) {
     return;
   }
 
   const skipped = new Set(settings.skiplist);
-  const rows: RuleRow[] = [
-    ...settings.whitelist.map((pattern) => ({ pattern, kind: 'enabled' as const, label: 'Trusted page' })),
-    ...settings.domainRules.filter((rule) => !skipped.has(rule.pattern)).map((rule) => ({
-      pattern: rule.pattern,
-      kind: 'domain' as const,
-      label: rule.type === 'both' ? 'Domain rule' : `Domain rule · ${rule.type === 'first_party' ? 'own responses' : 'calls it makes'}`
-    })),
-    ...settings.callRules.map((rule) => ({ pattern: rule.target, kind: 'call' as const, label: 'Unblocked call', from: rule.from })),
-    ...settings.skiplist.map((pattern) => ({ pattern, kind: 'skip' as const, label: 'Skipped' }))
+  const groups: Array<{ title: string; help: string; rows: RuleRow[] }> = [
+    {
+      title: 'Unblocked calls',
+      help: 'One URL, only from one page.',
+      rows: settings.callRules.map((rule) => ({ key: `call ${rule.from} ${rule.target}`, pattern: rule.target, kind: 'call' as const, from: rule.from }))
+    },
+    {
+      title: 'Trusted pages',
+      help: 'Every call these pages make.',
+      rows: settings.whitelist.map((pattern) => ({ key: `enabled ${pattern}`, pattern, kind: 'enabled' as const }))
+    },
+    {
+      title: 'Domain rules',
+      help: 'Set from the DevTools panel.',
+      rows: settings.domainRules.filter((rule) => !skipped.has(rule.pattern)).map((rule) => ({ key: `domain ${rule.pattern}`, pattern: rule.pattern, kind: 'domain' as const, label: DOMAIN_LABELS[rule.type] }))
+    },
+    {
+      title: 'Skipped',
+      help: 'Always keep their original headers.',
+      rows: settings.skiplist.map((pattern) => ({ key: `skip ${pattern}`, pattern, kind: 'skip' as const }))
+    }
   ];
+  const matches = (row: RuleRow) => !ruleFilter || [row.pattern, formatPatternForPeople(row.pattern), row.from ?? '', row.from ? formatPatternForPeople(row.from) : '', row.label ?? '']
+    .some((text) => text.toLowerCase().includes(ruleFilter));
 
   list.textContent = '';
-  if (rows.length === 0) {
-    const item = document.createElement('li');
-    const title = document.createElement('strong');
-    const description = document.createElement('span');
-    item.className = 'empty';
-    title.textContent = 'No rules yet.';
-    description.textContent = 'Add the page you are developing, such as localhost:3000, or click Trust in the popup while you are on it.';
-    item.append(title, description);
-    list.append(item);
+  const total = groups.reduce((sum, group) => sum + group.rows.length, 0);
+  if (total === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'rule-empty';
+    empty.textContent = 'No rules yet. Unblock a call from the popup or the list of requests below, or add one above.';
+    list.append(empty);
     return;
   }
 
-  rows.forEach((row) => list.append(createRuleRow(row)));
+  let shown = 0;
+  groups.forEach((group) => {
+    const rows = group.rows.filter(matches);
+    if (rows.length === 0) {
+      return;
+    }
+    shown += rows.length;
+    const section = document.createElement('section');
+    const heading = document.createElement('h3');
+    const help = document.createElement('span');
+    const items = document.createElement('ul');
+    section.className = 'rule-group';
+    heading.textContent = `${group.title} (${rows.length})`;
+    help.className = 'rule-group__help';
+    help.textContent = group.help;
+    heading.append(' ', help);
+    items.className = 'rule-lines';
+    rows.forEach((row) => items.append(editing?.key === row.key ? createEditRow(row) : createRuleRow(row)));
+    section.append(heading, items);
+    list.append(section);
+  });
+
+  if (shown === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'rule-empty';
+    empty.textContent = `No rules match "${ruleFilter}".`;
+    list.append(empty);
+  }
 }
 
-function createRuleRow({ pattern, kind, label, from }: RuleRow): HTMLLIElement {
+function createRuleRow(row: RuleRow): HTMLLIElement {
+  const { key, pattern, kind, from, label } = row;
   const item = document.createElement('li');
   const main = document.createElement('div');
-  const name = document.createElement('strong');
-  const code = document.createElement('code');
+  const name = document.createElement('span');
   const chips = document.createElement('span');
-  const feedback = document.createElement('span');
   const actions = document.createElement('span');
   const anyOrigin = settings.anyOriginTargets.includes(pattern);
   const customMethods = settings.methodOverrides[pattern];
+  const hasOptions = kind !== 'skip';
 
+  item.className = 'rule-line';
   item.dataset.kind = kind;
-  main.className = 'rule-row__main';
-  name.className = 'rule-row__name';
+  main.className = 'rule-line__main';
+  name.className = 'rule-line__name';
   name.textContent = formatPatternForPeople(pattern);
-  code.className = 'rule-row__pattern';
-  code.textContent = pattern;
-  chips.className = 'rule-row__chips';
-  appendChip(chips, label, kind === 'skip' ? 'skip' : undefined);
-  if (kind === 'call' && from) {
-    appendChip(chips, `Only from ${formatPatternForPeople(from)}`);
+  // The exact pattern is syntax; it shows on hover and while editing.
+  name.title = from ? `${pattern} from ${from}` : pattern;
+  chips.className = 'rule-line__chips';
+  if (from) {
+    appendChip(chips, `from ${formatPatternForPeople(from)}`);
+  }
+  if (label) {
+    appendChip(chips, label);
   }
   if (anyOrigin) {
     appendChip(chips, 'Any site may read', 'warning');
   }
-  if (customMethods && kind !== 'skip') {
-    appendChip(chips, `Methods: ${customMethods.join(', ')}`);
+  if (customMethods && hasOptions) {
+    appendChip(chips, customMethods.join(', '));
   }
-  main.append(name, code, chips);
+  main.append(name, chips);
 
-  feedback.className = 'row-feedback';
-  feedback.setAttribute('aria-live', 'polite');
-  actions.className = 'item-actions';
-  if (kind === 'enabled' || kind === 'skip') {
-    const editButton = document.createElement('button');
-    editButton.type = 'button';
-    editButton.className = 'icon-button';
-    editButton.textContent = '✎';
-    editButton.setAttribute('aria-label', `Edit ${formatPatternForPeople(pattern)}`);
-    editButton.title = 'Edit';
-    editButton.addEventListener('click', () => editPattern(pattern, kind));
-    actions.append(editButton);
+  actions.className = 'rule-line__actions';
+  if (kind !== 'domain') {
+    actions.append(createRowButton('Edit', `Edit ${formatPatternForPeople(pattern)}`, () => {
+      editing = { key, pattern, from: from ?? '' };
+      renderRules();
+      list?.querySelector<HTMLInputElement>('.rule-edit input')?.focus();
+    }));
   }
-  const removeButton = document.createElement('button');
-  removeButton.type = 'button';
-  removeButton.className = 'icon-button danger-button';
-  removeButton.textContent = '×';
-  removeButton.setAttribute('aria-label', `Remove ${formatPatternForPeople(pattern)}`);
-  removeButton.title = 'Remove';
-  removeButton.addEventListener('click', () => void (kind === 'call' && from
-    ? removeCallRule({ target: pattern, from }, feedback)
-    : removePattern(pattern, kind === 'call' ? 'enabled' : kind, feedback)));
+  if (hasOptions) {
+    const optionsButton = createRowButton('Options', `Options for ${formatPatternForPeople(pattern)}`, () => {
+      if (openRuleOptions.has(key)) {
+        openRuleOptions.delete(key);
+      } else {
+        openRuleOptions.add(key);
+      }
+      renderRules();
+    });
+    optionsButton.setAttribute('aria-expanded', String(openRuleOptions.has(key)));
+    actions.append(optionsButton);
+  }
+  const removeButton = createRowButton('Remove', `Remove ${formatPatternForPeople(pattern)}`, () => void (kind === 'call' && from
+    ? removeCallRule({ target: pattern, from })
+    : removePattern(pattern, kind === 'call' ? 'enabled' : kind)));
+  removeButton.classList.add('danger-button');
   actions.append(removeButton);
 
-  item.append(main);
-  // Skip rules keep a URL's original headers, so methods and opt-ins do not apply to them.
-  if (kind !== 'skip') {
-    const options = document.createElement('details');
-    const summary = document.createElement('summary');
-    options.className = 'rule-row__options';
-    summary.textContent = 'Options';
+  item.append(main, actions);
+  if (hasOptions && openRuleOptions.has(key)) {
+    const options = document.createElement('div');
+    options.className = 'rule-line__options';
     // An unblocked call is already scoped to one page, so "Any site may read" does not apply to it.
-    options.append(summary, ...(kind === 'call' ? [] : [createAnyOriginToggle(pattern)]), createMethodEditor(pattern));
+    options.append(...(kind === 'call' ? [] : [createAnyOriginToggle(pattern)]), createMethodEditor(pattern));
+    options.querySelector('details')?.setAttribute('open', '');
     item.append(options);
   }
-  item.append(feedback, actions);
   return item;
+}
+
+function createRowButton(text: string, label: string, onClick: () => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'secondary-button rule-line__button';
+  button.textContent = text;
+  button.setAttribute('aria-label', label);
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+// The row in edit mode: the exact pattern (and page, for a call) in inputs. Enter saves, Escape cancels.
+function createEditRow(row: RuleRow): HTMLLIElement {
+  const item = document.createElement('li');
+  const editForm = document.createElement('form');
+  const patternInput = document.createElement('input');
+  const save = document.createElement('button');
+  const cancel = createRowButton('Cancel', 'Cancel editing', () => {
+    editing = null;
+    renderRules();
+  });
+
+  item.className = 'rule-line rule-line--editing';
+  item.dataset.kind = row.kind;
+  editForm.className = 'rule-edit';
+  editForm.noValidate = true;
+  patternInput.value = editing?.pattern ?? row.pattern;
+  patternInput.setAttribute('aria-label', row.kind === 'call' ? 'API URL' : 'Pattern');
+  patternInput.addEventListener('input', () => {
+    if (editing) {
+      editing.pattern = patternInput.value;
+    }
+  });
+  editForm.append(patternInput);
+  if (row.kind === 'call') {
+    const fromInput = document.createElement('input');
+    fromInput.value = editing?.from ?? row.from ?? '';
+    fromInput.setAttribute('aria-label', 'Only from page');
+    fromInput.addEventListener('input', () => {
+      if (editing) {
+        editing.from = fromInput.value;
+      }
+    });
+    editForm.append(fromInput);
+  }
+  save.type = 'submit';
+  save.textContent = 'Save';
+  editForm.append(save, cancel);
+  editForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void saveEdit(row);
+  });
+  editForm.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      editing = null;
+      renderRules();
+    }
+  });
+  item.append(editForm);
+  return item;
+}
+
+// Replaces a rule's pattern (and page, for a call), carrying over its custom methods and opt-ins.
+async function saveEdit(row: RuleRow): Promise<void> {
+  if (!editing) {
+    return;
+  }
+  const next = normalizePattern(editing.pattern);
+  const nextFrom = row.kind === 'call' ? normalizePattern(editing.from) : null;
+  if (!next || (row.kind === 'call' && !nextFrom)) {
+    setMessage(row.kind === 'call' && !nextFrom ? 'Enter the page that makes the call, such as localhost:3000.' : `"${editing.pattern}" is not a valid pattern.`, true);
+    return;
+  }
+
+  const rename = <T>(values: T[], from: T, to: T) => [...new Set(values.map((value) => (value === from ? to : value)))];
+  const methodOverrides = { ...settings.methodOverrides };
+  if (next !== row.pattern && methodOverrides[row.pattern]) {
+    methodOverrides[next] = methodOverrides[row.pattern] ?? [];
+    delete methodOverrides[row.pattern];
+  }
+  let change: Partial<ExtensionSettings>;
+  if (row.kind === 'call' && nextFrom) {
+    const callRules = settings.callRules.map((rule) => (rule.target === row.pattern && rule.from === row.from ? { target: next, from: nextFrom } : rule));
+    change = { callRules, methodOverrides };
+  } else if (row.kind === 'skip') {
+    change = { skiplist: rename(settings.skiplist, row.pattern, next), whitelist: settings.whitelist.filter((item) => item !== next) };
+  } else {
+    change = {
+      whitelist: rename(settings.whitelist, row.pattern, next),
+      skiplist: settings.skiplist.filter((item) => item !== next),
+      anyOriginTargets: rename(settings.anyOriginTargets, row.pattern, next),
+      methodOverrides
+    };
+  }
+
+  setBusy(true);
+  try {
+    settings = await settingsController.update(change);
+    editing = null;
+    setMessage(`Saved ${formatPatternForPeople(next)}.`, false);
+    render();
+  } catch {
+    setMessage('Unable to save the rule.', true);
+  } finally {
+    setBusy(false);
+  }
 }
 
 function appendChip(target: HTMLElement, text: string, tone?: string): void {
@@ -644,47 +857,27 @@ function renderDiscoveredRequests(): void {
     const source = document.createElement('small');
     const feedback = document.createElement('span');
     const actions = document.createElement('span');
-    const editButton = document.createElement('button');
-    const enableButton = document.createElement('button');
-    const skipButton = document.createElement('button');
 
     code.textContent = request.url;
-    source.textContent = `Called by ${request.initiator ?? 'unknown site'} (${request.count} time${request.count === 1 ? '' : 's'})`;
+    source.textContent = `Called by ${request.initiator ? formatPatternForPeople(getTrustPatternForRequest(request.initiator, request.initiator) ?? request.initiator) : 'an unknown page'} · ${request.count} time${request.count === 1 ? '' : 's'}`;
     source.className = 'request-source';
     feedback.className = 'row-feedback';
     feedback.setAttribute('aria-live', 'polite');
     details.append(code, source);
-    const methodEditor = createMethodEditor(request.url);
 
-    editButton.type = 'button';
-    editButton.className = 'icon-button';
-    editButton.textContent = '✎';
-    editButton.setAttribute('aria-label', `Edit ${request.url}`);
-    editButton.title = 'Edit pattern';
-    editButton.addEventListener('click', () => editPattern(request.url));
-    enableButton.type = 'button';
-    enableButton.className = 'icon-button';
-    enableButton.textContent = '✓';
     // Unblock just this call from the page that made it; the page's other calls are unaffected.
     const callRule = getCallRuleForRequest(request.url, request.initiator);
-    const enableLabel = callRule
-      ? `Unblock this call from ${formatPatternForPeople(callRule.from)}`
-      : `Trust ${formatPatternForPeople(getTrustPatternForRequest(request.url, request.initiator) ?? request.url)}`;
-    enableButton.setAttribute('aria-label', enableLabel);
-    enableButton.title = enableLabel;
-    enableButton.addEventListener('click', () => void (callRule
+    const unblock = createRowButton('Unblock', callRule
+      ? `Unblock ${formatPatternForPeople(callRule.target)} from ${formatPatternForPeople(callRule.from)}`
+      : `Trust ${formatPatternForPeople(getTrustPatternForRequest(request.url, request.initiator) ?? request.url)}`, () => void (callRule
       ? addCallRule(callRule, feedback)
       : addDiscoveredPattern(getTrustPatternForRequest(request.url, request.initiator) ?? request.url, 'enabled', feedback)));
-    skipButton.type = 'button';
-    skipButton.className = 'icon-button danger-button';
-    skipButton.textContent = '−';
-    skipButton.setAttribute('aria-label', `Skip ${request.url}`);
-    skipButton.title = 'Add to skip rules';
-    skipButton.addEventListener('click', () => void addDiscoveredPattern(request.url, 'skip', feedback));
+    unblock.title = callRule ? `Only this URL, only from ${formatPatternForPeople(callRule.from)}` : '';
+    const skip = createRowButton('Skip', `Skip ${request.url}`, () => void addDiscoveredPattern(request.url, 'skip', feedback));
     actions.className = 'item-actions';
-    actions.append(editButton, enableButton, skipButton);
+    actions.append(unblock, skip);
 
-    item.append(details, methodEditor, feedback, actions);
+    item.append(details, feedback, actions);
     discoveredList.append(item);
   });
 }
@@ -785,27 +978,40 @@ async function updatePatternMethods(pattern: string, methods: string[]): Promise
   }
 }
 
+// Confirmations and errors appear as a short toast, so they are visible wherever the page is scrolled.
 function setMessage(text: string, isError: boolean): void {
+  if (!toastElement) {
+    return;
+  }
+  toastElement.textContent = text;
+  toastElement.dataset.error = String(isError);
+  toastElement.setAttribute('role', isError ? 'alert' : 'status');
+  toastElement.hidden = false;
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+  }
+  toastTimer = setTimeout(() => {
+    toastElement.hidden = true;
+  }, isError ? 8_000 : 4_000);
+}
+
+// Mistakes in the add form stay next to the form.
+function setFormError(text: string): void {
   if (!message) {
     return;
   }
-
   message.textContent = text;
-  message.dataset.error = String(isError);
+  message.dataset.error = String(Boolean(text));
   if (messageTimer) {
     clearTimeout(messageTimer);
   }
-  messageTimer = setTimeout(() => {
-    message.textContent = '';
-    message.dataset.error = 'false';
-  }, 20_000);
 }
 
 function setBusy(isBusy: boolean): void {
   form?.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button').forEach((control) => {
     control.disabled = isBusy;
   });
-  document.querySelectorAll<HTMLButtonElement>('.item-actions button').forEach((button) => {
+  document.querySelectorAll<HTMLButtonElement>('.item-actions button, .rule-line__actions button').forEach((button) => {
     button.disabled = isBusy;
   });
   document.querySelectorAll<HTMLInputElement>('.method-options input').forEach((input) => {

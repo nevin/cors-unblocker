@@ -9,14 +9,28 @@
   </head>
   <body>
     <main class="layout">
-      <header>
+      <header class="page-header">
         <p class="brand">
-          <img class="brand-logo brand-logo--light" src="../assets/brand/logo-horizontal-light.svg" alt="CORS Unblocker" height="36" />
-          <img class="brand-logo brand-logo--dark" src="../assets/brand/logo-horizontal-dark.svg" alt="CORS Unblocker" height="36" />
+          <img class="brand-logo brand-logo--light" src="../assets/brand/logo-horizontal-light.svg" alt="CORS Unblocker" height="32" />
+          <img class="brand-logo brand-logo--dark" src="../assets/brand/logo-horizontal-dark.svg" alt="CORS Unblocker" height="32" />
         </p>
-        <h1>Settings</h1>
-        <p class="subtitle">Choose which pages get relaxed CORS headers, and how responses are relaxed.</p>
+        <div class="page-header__titles">
+          <h1>Settings</h1>
+          <p class="subtitle">Choose which requests get relaxed CORS headers, and how.</p>
+        </div>
       </header>
+
+      <nav class="section-nav" aria-label="Settings sections">
+        <a href="#rules-section">Rules</a>
+        <a href="#discovered-section">Requests</a>
+        <a href="#behavior-section">Behavior</a>
+        <a href="#detection-section">Detection</a>
+        <a href="#response-settings">Responses</a>
+        <a href="#appearance-section">Appearance</a>
+        <a href="#backup-section">Backup</a>
+      </nav>
+
+      <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
       <section id="welcome" class="setting-section welcome" aria-labelledby="welcome-title" hidden>
         <h2 id="welcome-title">Welcome to CORS Unblocker</h2>
@@ -30,41 +44,53 @@
       </section>
 
       <section id="rules-section" class="setting-section" aria-labelledby="rules-title">
-        <div class="section-heading"><div><h2 id="rules-title">Rules</h2><p class="section-help">Trust the pages you're developing: calls they make get relaxed CORS headers. Skip rules keep a URL's original headers.</p></div><p id="count" class="summary" aria-live="polite"></p></div>
-        <form id="form" class="editor">
-          <label for="pattern">Add a page or URL</label>
-          <div class="row">
-            <input id="pattern" type="text" placeholder="localhost:3000 or *.example.dev" autocomplete="off" aria-describedby="pattern-note" />
-            <select id="rule-kind" aria-label="Rule type">
-              <option value="enabled">Trust</option>
-              <option value="skip">Skip</option>
-            </select>
+        <div class="section-heading"><div><h2 id="rules-title">Rules</h2><p class="section-help">Unblock single API calls, or trust a whole page you're developing. Skip rules always keep a URL's original headers.</p></div><p id="count" class="summary" aria-live="polite"></p></div>
+        <form id="form" class="editor" novalidate>
+          <div class="rule-form">
+            <label class="rule-form__field" for="rule-kind">Rule
+              <select id="rule-kind">
+                <option value="enabled">Trust a page</option>
+                <option value="call">Unblock one URL</option>
+                <option value="skip">Skip a URL</option>
+              </select>
+            </label>
+            <label class="rule-form__field rule-form__pattern" for="pattern"><span id="pattern-label">Page</span>
+              <input id="pattern" type="text" placeholder="localhost:3000 or *.example.dev" autocomplete="off" aria-describedby="pattern-note" />
+            </label>
+            <label id="call-from-field" class="rule-form__field rule-form__pattern" for="call-from" hidden>Only from page
+              <input id="call-from" type="text" placeholder="localhost:3000" autocomplete="off" />
+            </label>
             <button type="submit">Add</button>
           </div>
-          <p id="pattern-note" class="section-help pattern-note">Hosts, full URLs, wildcard subdomains (*.example.dev) and paths ending in /* all work.</p>
-          <p id="message" class="message" role="status"></p>
+          <p id="pattern-note" class="section-help pattern-note"></p>
+          <p id="message" class="message" role="alert"></p>
         </form>
-        <ul id="list" class="list rule-rows"></ul>
+        <div class="rule-tools">
+          <label class="rule-tools__filter" for="rule-filter">Filter rules
+            <input id="rule-filter" type="search" placeholder="Type a site or path" autocomplete="off" />
+          </label>
+        </div>
+        <div id="list" class="rule-groups"></div>
       </section>
 
       <details id="discovered-section" class="setting-section request-section">
         <summary class="section-summary"><span>Discovered requests</span></summary>
-        <p class="section-help">URLs recently called by web pages while overrides are enabled. ✓ trusts the page that made the request; − skips the URL.</p>
+        <p class="section-help">URLs pages called recently while overrides were on. <strong>Unblock</strong> relaxes just that call from the page that made it; <strong>Skip</strong> keeps its original headers.</p>
         <ul id="discovered-list" class="list"></ul>
       </details>
 
-      <section class="setting-section behavior-section">
+      <section id="behavior-section" class="setting-section behavior-section">
         <div class="section-heading"><div><h2>Behavior</h2><p class="section-help">Turn overrides on or off, and choose which pages they apply to.</p></div><p id="settings-status" class="settings-status" aria-live="polite"></p></div>
         <label class="setting-toggle"><input id="enabled" type="checkbox" /><span><strong>CORS overrides on</strong><small>Apply your rules to matching requests.</small></span></label>
         <fieldset class="mode-options">
           <legend>Scope</legend>
-          <label><input type="radio" name="mode" value="whitelist" /> <span><strong>Trusted pages only</strong><small>Recommended</small></span></label>
-          <label><input type="radio" name="mode" value="global" /> <span><strong>Every website</strong><small>Global mode</small></span></label>
+          <label><input type="radio" name="mode" value="whitelist" /> <span><strong>Only my rules</strong><small>Recommended. Just the calls and pages you chose.</small></span></label>
+          <label><input type="radio" name="mode" value="global" /> <span><strong>Every website</strong><small>Global mode: relaxes CORS on every site you visit, including ones you don't trust. Use it briefly.</small></span></label>
         </fieldset>
         <p id="global-mode-warning" class="global-mode-warning" role="alert" hidden>Global mode relaxes CORS headers for every website, not just your active rules. Switch back to trusted pages only when you are done debugging.</p>
       </section>
 
-      <section class="setting-section">
+      <section id="detection-section" class="setting-section">
         <h2>Blocked-call detection</h2>
         <label class="header-option"><input id="detect-cors-issues" type="checkbox" /> <span><strong>Detect calls blocked by CORS</strong><small>Shows a red count on the toolbar icon and lists blocked calls in the popup, with a one-click fix. Works even while overrides are off.</small><em>Only failing cross-origin calls are kept, without query strings, per tab, in memory for this browser session. They are cleared when the tab navigates or closes and never leave your browser.</em></span></label>
       </section>
@@ -90,13 +116,13 @@
         </fieldset>
       </details>
 
-      <section class="setting-section">
+      <section id="appearance-section" class="setting-section">
         <div class="section-heading"><div><h2>Appearance</h2><p class="section-help">Choose the theme for every plugin page.</p></div><label class="theme-control" for="theme">Theme
           <select id="theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
         </label></div>
       </section>
 
-      <details class="setting-section rules-backup">
+      <details id="backup-section" class="setting-section rules-backup">
         <summary class="section-summary"><span>Import/Export rules</span></summary>
         <p class="section-help">Export your rules to JSON or preview an import before replacing current rule and CORS response settings.</p>
         <div class="backup-actions">
