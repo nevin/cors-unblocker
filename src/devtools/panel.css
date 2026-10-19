@@ -35,7 +35,11 @@ body {
 }
 
 .panel__header .title-group {
-  min-width: 0;
+  display: grid;
+  grid-template-areas:
+    'title'
+    'subtitle';
+  align-items: center;
 }
 
 .header-controls {
@@ -56,13 +60,6 @@ body {
     'icon subtitle';
   align-items: center;
   column-gap: 10px;
-}
-
-.title-icon {
-  grid-area: icon;
-  width: 42px;
-  height: 32px;
-  border-radius: 8px;
 }
 
 .eyebrow {

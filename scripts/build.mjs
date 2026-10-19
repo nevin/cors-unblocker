@@ -60,6 +60,11 @@ await copyCss(join(root, 'src/devtools/panel.css'), join(outputDirectory, 'devto
 await copyCss(join(root, 'src/shared/shared.css'), join(outputDirectory, 'devtools/shared.css'));
 await mkdir(join(outputDirectory, 'assets'), { recursive: true });
 await copyFile(join(root, 'assets/icon.svg'), join(outputDirectory, 'assets/icon.svg'));
+// Page headers show the horizontal logo, in a light-theme and a dark-theme variant.
+await mkdir(join(outputDirectory, 'assets/brand'), { recursive: true });
+for (const variant of ['light', 'dark']) {
+  await copyFile(join(root, `assets/brand/logo-horizontal-${variant}.svg`), join(outputDirectory, `assets/brand/logo-horizontal-${variant}.svg`));
+}
 for (const size of [16, 32, 48, 64, 96, 128]) {
   await copyFile(join(root, `assets/icon-${size}.png`), join(outputDirectory, `assets/icon-${size}.png`));
 }

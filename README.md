@@ -1,4 +1,11 @@
-# cors-unblocker
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/logo-horizontal-dark.svg" />
+    <img alt="CORS Unblocker" src="assets/brand/logo-horizontal-light.svg" width="360" />
+  </picture>
+</p>
+
+# CORS Unblocker
 
 A browser extension for selectively relaxing CORS response headers during local web development, with whitelist and global modes.
 

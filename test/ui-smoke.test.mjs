@@ -11,7 +11,7 @@ describe('ui source smoke checks', () => {
     const html = await source('src/devtools/panel.html');
     const script = await source('src/devtools/panel.ts');
 
-    ['id="devtools-panel"', 'id="control-card"', 'id="panel-header"', 'id="title-group"', 'id="title-icon"', 'src="../assets/icon.svg"', 'id="header-controls"', 'id="panel-status"', 'id="power-label"', 'id="open-settings"', 'id="global-warning"', 'id="leave-global"', 'id="configuration-card"', 'id="details-section"', 'id="details-tabs"', 'id="page-url-row"', 'id="coverage"', 'id="effective-rule"', 'id="effective-methods"', 'id="allow-page"', 'Add domain rule', 'id="add-domain-rule"', 'Add active URL', 'Add skip URL', 'id="current-links"', 'id="rules-list"', 'id="current-link-filter-input"', 'id="request-scope-filter"', 'data-request-scope="current"', 'data-request-scope="other"', 'id="rules-filter-input"', 'id="rule-state-filter"', 'id="tab-backup"', 'id="panel-backup"', 'id="backup-actions"', 'id="import-preview"', 'id="import-preview-summary"', 'id="confirm-import-rules"', 'id="cancel-import-rules"', 'id="export-rules"', 'id="import-rules"', 'Requests', 'This page', 'Other tabs', 'Import/Export'].forEach((token) => {
+    ['id="devtools-panel"', 'id="control-card"', 'id="panel-header"', 'id="title-group"', 'src="../assets/brand/logo-horizontal-light.svg"', 'src="../assets/brand/logo-horizontal-dark.svg"', 'id="header-controls"', 'id="panel-status"', 'id="power-label"', 'id="open-settings"', 'id="global-warning"', 'id="leave-global"', 'id="configuration-card"', 'id="details-section"', 'id="details-tabs"', 'id="page-url-row"', 'id="coverage"', 'id="effective-rule"', 'id="effective-methods"', 'id="allow-page"', 'Add domain rule', 'id="add-domain-rule"', 'Add active URL', 'Add skip URL', 'id="current-links"', 'id="rules-list"', 'id="current-link-filter-input"', 'id="request-scope-filter"', 'data-request-scope="current"', 'data-request-scope="other"', 'id="rules-filter-input"', 'id="rule-state-filter"', 'id="tab-backup"', 'id="panel-backup"', 'id="backup-actions"', 'id="import-preview"', 'id="import-preview-summary"', 'id="confirm-import-rules"', 'id="cancel-import-rules"', 'id="export-rules"', 'id="import-rules"', 'Requests', 'This page', 'Other tabs', 'Import/Export'].forEach((token) => {
       assert.match(html, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     });
     assert.match(html, /id="tab-rules"[^>]*class="tab is-active"/);
@@ -31,7 +31,7 @@ describe('ui source smoke checks', () => {
   it('DevTools panel leaves global settings to the options page', async () => {
     const html = await source('src/devtools/panel.html');
 
-    assert.match(html, /<h1 id="control-title">CORS Unblocker<\/h1>/);
+    assert.match(html, /<h1 id="control-title" class="brand">/);
     assert.doesNotMatch(html, /name="mode"|id="theme"|id="allow-all-headers"|id="allow-credentials"|class="allow-method"/);
     assert.ok(html.indexOf('id="cors-blocked"') < html.indexOf('id="current-panel-title-row"'), 'blocked calls come before the request list');
   });
@@ -56,7 +56,7 @@ describe('ui source smoke checks', () => {
   it('popup keeps settings out and leads with one product name', async () => {
     const html = await source('src/popup/index.html');
 
-    assert.match(html, /<h1>CORS Unblocker<\/h1>/);
+    assert.match(html, /<h1 class="brand">/);
     assert.match(html, /Pause 1 hour/);
     assert.doesNotMatch(html, /name="mode"|id="theme"|CORS Control|Whitelist/);
   });
@@ -68,4 +68,13 @@ describe('ui source smoke checks', () => {
       assert.match(css, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     });
   });
+
+  it('every page header shows the logo in a light and a dark variant, named for screen readers', async () => {
+    for (const path of ['src/popup/index.html', 'src/devtools/panel.html', 'src/options/index.html']) {
+      const html = await source(path);
+      assert.match(html, /class="brand-logo brand-logo--light" src="\.\.\/assets\/brand\/logo-horizontal-light\.svg" alt="CORS Unblocker"/, path);
+      assert.match(html, /class="brand-logo brand-logo--dark" src="\.\.\/assets\/brand\/logo-horizontal-dark\.svg" alt="CORS Unblocker"/, path);
+    }
+  });
 });
+

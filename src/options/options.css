@@ -18,6 +18,10 @@ header p {
   text-transform: uppercase;
 }
 
+header .brand {
+  margin: 0 0 18px;
+}
+
 h1 {
   margin: 0 0 28px;
   font-size: clamp(32px, 7vw, 54px);

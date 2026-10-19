@@ -386,3 +386,38 @@ input:focus-visible {
 .global-warning .link-button {
   color: var(--danger);
 }
+
+/* The horizontal logo comes in a navy wordmark for light themes and a white one for dark themes. */
+.brand {
+  display: flex;
+  margin: 0;
+  line-height: 0;
+}
+
+.brand-logo {
+  display: block;
+  width: auto;
+}
+
+.brand-logo--dark {
+  display: none;
+}
+
+:root[data-theme='dark'] .brand-logo--light {
+  display: none;
+}
+
+:root[data-theme='dark'] .brand-logo--dark {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark']) .brand-logo--light {
+    display: none;
+  }
+
+  :root:not([data-theme='light']):not([data-theme='dark']) .brand-logo--dark {
+    display: block;
+  }
+}
+
