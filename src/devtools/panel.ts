@@ -6,6 +6,8 @@ import {
   onDiscoveredRequestsChanged,
   toLoggedUrl
 } from '../shared/browserApi';
+import { CorsFix, CorsIssue, PlannedCorsIssue, applyCorsFixes, collectCorsFixes, describeCorsCall, describeCorsFix, describeCorsProblem, isOpenCorsIssue, planCorsIssues, planIssueFix } from '../shared/corsDiagnosis';
+import { loadTabCorsIssues, onTabCorsIssuesChanged } from '../shared/corsMonitor';
 import { DEFAULT_ALLOW_METHODS, CorsMode, DomainRuleType, EffectiveCorsRule, ExtensionSettings, exportRules, getAllowedMethodsForRequest, getEffectiveCorsRuleForRequest, getTrustPatternForRequest, importRules, isCorsEnabledForRequest, isCorsSkippedForRequest, isCredentialsSupported, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
 import { applyTheme } from '../shared/theme';
 
@@ -57,6 +59,12 @@ const currentCount = document.querySelector<HTMLElement>('#current-count');
 const currentRequestCount = document.querySelector<HTMLElement>('#current-request-count');
 const otherCount = document.querySelector<HTMLElement>('#other-count');
 const rulesCount = document.querySelector<HTMLElement>('#rules-count');
+const blockedTabCount = document.querySelector<HTMLElement>('#blocked-tab-count');
+const corsBlockedSection = document.querySelector<HTMLElement>('#cors-blocked');
+const corsBlockedSummary = document.querySelector<HTMLElement>('#cors-blocked-summary');
+const corsBlockedList = document.querySelector<HTMLUListElement>('#cors-blocked-list');
+const fixAllCorsButton = document.querySelector<HTMLButtonElement>('#fix-all-cors');
+const reloadInspectedButton = document.querySelector<HTMLButtonElement>('#reload-inspected');
 
 let settings: ExtensionSettings;
 let inspectedUrl: string | null = null;
@@ -71,6 +79,9 @@ let collapsedRequestGroups = new Set<string>();
 let suppressNextSettingsRender = false;
 let pendingImportedSettings: Partial<ExtensionSettings> | null = null;
 let requestScope: 'current' | 'other' = 'current';
+let corsIssues: CorsIssue[] = [];
+// Calls that failed and that the current settings now fix; they need a page reload to retry.
+const fixedSinceOpen = new Set<string>();
 const settingsController = new SettingsController();
 
 void initialize();
@@ -80,8 +91,19 @@ async function initialize(): Promise<void> {
     settings = await settingsController.initialize();
     inspectedUrl = await getInspectedUrl();
     inspectedTabId = chrome.devtools.inspectedWindow.tabId;
-    inspectedPattern = inspectedUrl ? normalizePattern(inspectedUrl) : null;
+    // Trust the whole origin: a single-page app changes paths without reloading.
+    inspectedPattern = inspectedUrl ? getTrustPatternForRequest(inspectedUrl, inspectedUrl) : null;
     discoveredRequests = await loadDiscoveredRequests();
+    corsIssues = await loadTabCorsIssues(inspectedTabId);
+    onTabCorsIssuesChanged(inspectedTabId, (issues) => {
+      corsIssues = issues;
+      // A reload or navigation starts over, so earlier fixes no longer need a retry.
+      if (issues.length === 0) {
+        fixedSinceOpen.clear();
+      }
+      renderCorsBlocked();
+      syncLinkStatuses();
+    });
     render();
     settingsController.subscribe((nextSettings) => {
       settings = nextSettings;
@@ -153,16 +175,23 @@ async function initialize(): Promise<void> {
     void updateSettings({ allowCredentials: allowCredentialsInput.checked });
   });
 
+  // Trusts the page's origin and turns overrides on, like the popup, so one click makes the page work.
   allowPageButton?.addEventListener('click', () => {
-    if (inspectedPattern && (!settings.whitelist.includes(inspectedPattern) || settings.skiplist.includes(inspectedPattern))) {
-      void updateSettings({
-        whitelist: [...new Set([...settings.whitelist, inspectedPattern])],
-        skiplist: settings.skiplist.filter((pattern) => pattern !== inspectedPattern)
-      });
+    if (inspectedPattern) {
+      void applyCorsFixesFromPanel([
+        ...(settings.enabled ? [] : [{ kind: 'enable' } as const]),
+        { kind: 'trust-page', pattern: inspectedPattern }
+      ], `${inspectedPattern} is trusted. Reload the page to retry blocked calls.`);
     }
   });
 
   addDomainRuleButton?.addEventListener('click', addNewDomainRule);
+  fixAllCorsButton?.addEventListener('click', () => {
+    void applyCorsFixesFromPanel(collectCorsFixes(planCorsIssues(corsIssues, settings)), 'Fixed. Reload the page to retry the blocked calls.');
+  });
+  reloadInspectedButton?.addEventListener('click', () => {
+    chrome.devtools.inspectedWindow.reload({});
+  });
 
   tabButtons.forEach((button) => {
     button.addEventListener('click', () => activateTab(button));
@@ -756,6 +785,125 @@ function renderSettingsChange(): void {
   renderCoverage();
   renderRules();
   syncLinkStatuses();
+  renderCorsBlocked();
+}
+
+async function applyCorsFixesFromPanel(fixes: CorsFix[], message: string): Promise<void> {
+  if (fixes.length === 0) {
+    return;
+  }
+
+  const openBefore = planCorsIssues(corsIssues, settings).filter(isOpenCorsIssue).map(({ issue }) => issue.key);
+  await updateSettings(applyCorsFixes(settings, fixes));
+  const stillOpen = new Set(planCorsIssues(corsIssues, settings).filter(isOpenCorsIssue).map(({ issue }) => issue.key));
+  openBefore.filter((key) => !stillOpen.has(key)).forEach((key) => fixedSinceOpen.add(key));
+  renderCorsBlocked();
+  showNotice(message, false);
+}
+
+function renderCorsBlocked(): void {
+  if (!corsBlockedSection || !corsBlockedSummary || !corsBlockedList) {
+    return;
+  }
+
+  const planned = planCorsIssues(corsIssues, settings);
+  const open = planned.filter(isOpenCorsIssue);
+  const recentlyFixed = planned.filter(({ issue, state }) => state === 'fixed' && fixedSinceOpen.has(issue.key));
+  const bulkFixes = collectCorsFixes(planned);
+
+  corsBlockedSection.hidden = !settings.detectCorsIssues;
+  corsBlockedSection.dataset.state = open.length > 0 ? 'blocked' : 'clear';
+  if (blockedTabCount) {
+    blockedTabCount.hidden = open.length === 0;
+    blockedTabCount.textContent = String(open.length);
+  }
+  corsBlockedSummary.textContent = open.length > 0
+    ? `${open.length} call${open.length === 1 ? '' : 's'} blocked.${bulkFixes.length > 0 ? ` Fix all will: ${bulkFixes.map(describeCorsFix).join('; ')}.` : ''}`
+    : recentlyFixed.length > 0
+      ? 'Fixed. Reload the page to retry the calls that failed.'
+      : 'No calls blocked by CORS. Calls that fail CORS on this page will show up here, with the reason and a fix.';
+  if (fixAllCorsButton) {
+    fixAllCorsButton.hidden = bulkFixes.length === 0;
+  }
+  if (reloadInspectedButton) {
+    reloadInspectedButton.hidden = recentlyFixed.length === 0;
+  }
+
+  corsBlockedList.textContent = '';
+  [...open, ...recentlyFixed].forEach((entry) => corsBlockedList.append(createCorsBlockedItem(entry)));
+}
+
+function createCorsBlockedItem({ issue, state, fixes }: PlannedCorsIssue): HTMLLIElement {
+  const item = document.createElement('li');
+  const call = document.createElement('div');
+  const code = document.createElement('code');
+  const host = document.createElement('span');
+  const reason = document.createElement('small');
+  const fixText = document.createElement('small');
+  const actions = document.createElement('span');
+  const settingsFixes = fixes.filter((fix) => fix.kind !== 'override-server');
+  const needsOverride = fixes.some((fix) => fix.kind === 'override-server');
+
+  item.dataset.state = state;
+  call.className = 'cors-blocked__call';
+  code.textContent = describeCorsCall(issue);
+  host.className = 'cors-blocked__host';
+  host.textContent = ` ${getRequestHostname(issue.url)}${issue.count > 1 ? ` · ${issue.count} times` : ''}`;
+  call.append(code, host);
+  reason.className = 'cors-blocked__reason';
+  reason.textContent = state === 'fixed' ? 'Fixed by your current rules. Reload the page to retry.' : describeCorsProblem(issue.problem, { origin: issue.pageOrigin });
+  fixText.className = 'cors-blocked__fix';
+  fixText.textContent = state === 'unfixable'
+    ? 'Fix this on the server: the extension cannot change status codes.'
+    : fixes.length > 0 ? `Fix: ${fixes.map(describeCorsFix).join('; ')}` : '';
+  actions.className = 'cors-blocked__row-actions';
+
+  if (state === 'blocked' && settingsFixes.length > 0) {
+    const fixButton = document.createElement('button');
+    fixButton.type = 'button';
+    fixButton.textContent = 'Fix';
+    fixButton.title = settingsFixes.map(describeCorsFix).join('; ');
+    fixButton.setAttribute('aria-label', `Fix ${describeCorsCall(issue)}`);
+    fixButton.addEventListener('click', () => void applyCorsFixesFromPanel(settingsFixes, 'Fixed. Reload the page to retry this call.'));
+    actions.append(fixButton);
+  }
+  if (state === 'blocked' && needsOverride) {
+    const overrideButton = document.createElement('button');
+    overrideButton.type = 'button';
+    overrideButton.className = 'danger-button';
+    overrideButton.textContent = 'Override server headers';
+    overrideButton.addEventListener('click', () => {
+      if (globalThis.confirm('Override CORS headers that servers already send? This applies to every trusted page and can break APIs that rely on credentials.')) {
+        void applyCorsFixesFromPanel([...settingsFixes, { kind: 'override-server' }], 'Server CORS headers will be overridden. Reload the page to retry.');
+      }
+    });
+    actions.append(overrideButton);
+  }
+  const copyButton = document.createElement('button');
+  copyButton.type = 'button';
+  copyButton.className = 'icon-button';
+  copyButton.textContent = '⧉';
+  copyButton.title = 'Copy URL';
+  copyButton.setAttribute('aria-label', `Copy ${issue.url}`);
+  copyButton.addEventListener('click', () => void copyText(issue.url));
+  actions.append(copyButton);
+
+  item.append(call, reason, ...(fixText.textContent ? [fixText] : []), actions);
+  return item;
+}
+
+// One status for a request row: a CORS failure seen on this page outranks what the rules say.
+function getLinkStatus(url: string, initiator: string | undefined): { text: string; state: string } {
+  const issue = corsIssues.find((candidate) => candidate.url === url);
+  if (issue && settings.detectCorsIssues && isOpenCorsIssue(planIssueFix(issue, settings))) {
+    return { text: 'Blocked by CORS', state: 'blocked' };
+  }
+  if (isCorsSkippedForRequest(url, initiator, settings)) {
+    return { text: 'Skipped', state: 'skipped' };
+  }
+  return isCorsEnabledForRequest(url, initiator, settings)
+    ? { text: 'CORS enabled', state: 'enabled' }
+    : { text: 'Not enabled', state: 'inactive' };
 }
 
 async function addRequestPattern(url: string, kind: 'active' | 'skip'): Promise<void> {
@@ -784,6 +932,7 @@ function render(): void {
   renderCoverage();
   renderLinks();
   renderRules();
+  renderCorsBlocked();
   restoreOpenMethodEditors();
 }
 
@@ -830,9 +979,8 @@ function renderCoverage(): void {
   renderEffectiveRule();
   renderEffectiveMethods(covered);
   const inspectedPageSkipped = Boolean(inspectedUrl && isCorsSkippedForRequest(inspectedUrl, inspectedUrl, settings));
-  const inspectedPageAllowed = Boolean(inspectedPattern && settings.whitelist.includes(inspectedPattern) && !inspectedPageSkipped);
-  allowPageButton!.hidden = !inspectedPattern || inspectedPageAllowed;
-  allowPageButton!.disabled = !inspectedPattern || inspectedPageAllowed;
+  allowPageButton!.hidden = !inspectedPattern || covered;
+  allowPageButton!.disabled = !inspectedPattern || covered;
   allowPageButton!.textContent = inspectedPageSkipped ? 'Move to active' : 'Allow this page';
 }
 
@@ -1042,10 +1190,9 @@ function renderLinkList(target: HTMLUListElement | null, requests: DiscoveredReq
       feedback.className = 'link-feedback';
       feedback.setAttribute('aria-live', 'polite');
       status.className = 'link-status';
-      const skipped = isCorsSkippedForRequest(request.url, request.initiator ?? undefined, settings);
-      const enabled = isCorsEnabledForRequest(request.url, request.initiator ?? undefined, settings);
-      status.textContent = skipped ? 'Skipped' : enabled ? 'CORS enabled' : 'Not enabled';
-      status.dataset.state = skipped ? 'skipped' : enabled ? 'enabled' : 'inactive';
+      const linkStatus = getLinkStatus(request.url, request.initiator ?? undefined);
+      status.textContent = linkStatus.text;
+      status.dataset.state = linkStatus.state;
       activeButton.type = 'button';
       activeButton.className = 'icon-button';
       activeButton.textContent = '✓';
@@ -1113,11 +1260,9 @@ function syncLinkStatuses(): void {
       return;
     }
 
-    const initiator = item.dataset.initiator;
-    const skipped = isCorsSkippedForRequest(url, initiator, settings);
-    const enabled = isCorsEnabledForRequest(url, initiator, settings);
-    status.textContent = skipped ? 'Skipped' : enabled ? 'CORS enabled' : 'Not enabled';
-    status.dataset.state = skipped ? 'skipped' : enabled ? 'enabled' : 'inactive';
+    const linkStatus = getLinkStatus(url, item.dataset.initiator);
+    status.textContent = linkStatus.text;
+    status.dataset.state = linkStatus.state;
   });
 }
 

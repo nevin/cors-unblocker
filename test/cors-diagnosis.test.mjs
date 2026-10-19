@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { applyCorsFixes, describeCorsFix, describeCorsProblem, findCorsProblem, isCorsRequest, planCorsFix, readCorsRequest } from '../dist-test/shared/corsDiagnosis.js';
+import { applyCorsFixes, collectCorsFixes, countOpenIssues, describeCorsCall, describeCorsFix, describeCorsProblem, findCorsProblem, isCorsRequest, planCorsFix, planCorsIssues, readCorsRequest } from '../dist-test/shared/corsDiagnosis.js';
 import { isCorsEnabledForRequest, mergeSettings } from '../dist-test/shared/settings.js';
 
 const app = 'http://localhost:3000';
@@ -111,5 +111,45 @@ describe('CORS fix planning', () => {
     assert.match(describeCorsProblem({ reason: 'preflight-status', detail: '404' }, { origin: app }), /404.*cannot change status codes/);
     assert.match(describeCorsProblem({ reason: 'origin-mismatch', detail: 'https://prod.example.com' }, { origin: app }), /allows https:\/\/prod\.example\.com, not http:\/\/localhost:3000/);
     assert.equal(describeCorsFix({ kind: 'trust-page', pattern: 'http://localhost:3000/*' }), 'Trust http://localhost:3000/*');
+  });
+});
+
+describe('CORS issue lists', () => {
+  const issue = (key, extra = {}) => ({
+    key, url: 'https://api.staging.dev/v1/users', pageOrigin: app, method: 'GET', preflight: false, requestedHeaders: [],
+    problem: { reason: 'missing-allow-origin', detail: null }, serverSentAllowOrigin: false, count: 1, lastSeen: 0, ...extra
+  });
+  const issues = [
+    issue('a'),
+    issue('b', { url: 'https://api.staging.dev/v1/orders', method: 'PATCH', preflight: true, requestedHeaders: ['x-api-key'] }),
+    issue('c', { url: 'https://auth.example.com/session', problem: { reason: 'origin-mismatch', detail: 'https://prod.example.com' }, serverSentAllowOrigin: true }),
+    issue('d', { url: 'https://legacy.internal/report', method: 'DELETE', preflight: true, problem: { reason: 'preflight-status', detail: '405' } })
+  ];
+
+  it('collects each needed fix once, leaving server overrides for explicit confirmation', () => {
+    const settings = mergeSettings({ allowMethods: ['GET'] });
+    const planned = planCorsIssues(issues, settings);
+
+    assert.deepEqual(collectCorsFixes(planned), [
+      { kind: 'enable' },
+      { kind: 'trust-page', pattern: 'http://localhost:3000/*' },
+      { kind: 'allow-method', method: 'PATCH' },
+      { kind: 'allow-headers' }
+    ]);
+    assert.ok(collectCorsFixes(planned, { includeOverride: true }).some((fix) => fix.kind === 'override-server'));
+  });
+
+  it('counts open issues before and after fixing', () => {
+    const settings = mergeSettings({ allowMethods: ['GET'] });
+    assert.equal(countOpenIssues(issues, settings), 4);
+
+    const fixed = mergeSettings({ ...settings, ...applyCorsFixes(settings, collectCorsFixes(planCorsIssues(issues, settings))) });
+    assert.deepEqual(planCorsIssues(issues, fixed).map(({ issue: { key }, state }) => `${key}:${state}`), ['a:fixed', 'b:fixed', 'c:blocked', 'd:unfixable']);
+    assert.equal(countOpenIssues(issues, fixed), 2);
+  });
+
+  it('describes a call by method and path', () => {
+    assert.equal(describeCorsCall(issues[0]), 'GET /v1/users');
+    assert.equal(describeCorsCall(issues[1]), 'Preflight for PATCH /v1/orders');
   });
 });

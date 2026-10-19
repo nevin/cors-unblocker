@@ -201,6 +201,11 @@ h1 {
   color: var(--accent);
 }
 
+.link-status[data-state='blocked'] {
+  background: var(--danger);
+  color: var(--white);
+}
+
 .link-status[data-state='skipped'] {
   background: var(--danger-soft);
   color: var(--danger);
@@ -401,6 +406,142 @@ h1 {
   background: rgba(255, 255, 255, 0.2);
   font-size: 11px;
   line-height: 1;
+}
+
+.tab-count--alert {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--white);
+  font-weight: 800;
+}
+
+.tab-count--alert[hidden] {
+  display: none;
+}
+
+.cors-blocked {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.cors-blocked[data-state='blocked'] {
+  border-color: var(--danger-border);
+}
+
+.cors-blocked__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cors-blocked h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.cors-blocked[data-state='blocked'] h3 {
+  color: var(--danger);
+}
+
+.cors-blocked .help {
+  margin: 4px 0 0;
+}
+
+.cors-blocked__actions,
+.cors-blocked__row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.cors-blocked__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cors-blocked__list:empty {
+  display: none;
+}
+
+.cors-blocked__list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'call actions'
+    'reason actions'
+    'fix actions';
+  gap: 3px 12px;
+  border-left: 3px solid var(--line);
+  padding: 4px 0 4px 10px;
+}
+
+.cors-blocked__list li[data-state='blocked'],
+.cors-blocked__list li[data-state='unfixable'] {
+  border-left-color: var(--danger);
+}
+
+.cors-blocked__list li[data-state='fixed'] {
+  border-left-color: var(--accent);
+}
+
+.cors-blocked__call {
+  grid-area: call;
+  overflow-wrap: anywhere;
+}
+
+.cors-blocked__call code {
+  font-weight: 800;
+}
+
+.cors-blocked__host {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cors-blocked__reason {
+  grid-area: reason;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.cors-blocked__fix {
+  grid-area: fix;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cors-blocked__row-actions {
+  grid-area: actions;
+  align-self: start;
+}
+
+@media (max-width: 640px) {
+  .cors-blocked__header {
+    flex-direction: column;
+  }
+
+  .cors-blocked__list li {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'call'
+      'reason'
+      'fix'
+      'actions';
+  }
+
+  .cors-blocked__row-actions {
+    justify-content: flex-start;
+  }
 }
 
 .tab-panel {

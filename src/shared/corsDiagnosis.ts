@@ -70,10 +70,7 @@ export function planIssueFix(issue: CorsIssue, settings: ExtensionSettings): Cor
 }
 
 export function countOpenIssues(issues: CorsIssue[], settings: ExtensionSettings): number {
-  return issues.filter((issue) => {
-    const { state } = planIssueFix(issue, settings);
-    return state === 'blocked' || state === 'unfixable';
-  }).length;
+  return issues.filter((issue) => isOpenCorsIssue(planIssueFix(issue, settings))).length;
 }
 
 // Methods and request headers a preflight never has to list (CORS-safelisted).
@@ -212,6 +209,40 @@ export function applyCorsFixes(settings: ExtensionSettings, fixes: CorsFix[]): P
     }
   });
   return next;
+}
+
+export interface PlannedCorsIssue extends CorsFixPlan {
+  issue: CorsIssue;
+}
+
+export function planCorsIssues(issues: CorsIssue[], settings: ExtensionSettings): PlannedCorsIssue[] {
+  return issues.map((issue) => ({ issue, ...planIssueFix(issue, settings) }));
+}
+
+export function isOpenCorsIssue({ state }: CorsFixPlan): boolean {
+  return state === 'blocked' || state === 'unfixable';
+}
+
+// The deduplicated fixes for every blocked call. Server-header overrides are left out unless asked for,
+// because they change behavior on every trusted page and deserve their own confirmation.
+export function collectCorsFixes(planned: PlannedCorsIssue[], { includeOverride = false } = {}): CorsFix[] {
+  const fixes = new Map<string, CorsFix>();
+  planned
+    .filter(({ state }) => state === 'blocked')
+    .flatMap(({ fixes: issueFixes }) => issueFixes)
+    .filter((fix) => includeOverride || fix.kind !== 'override-server')
+    .forEach((fix) => fixes.set(JSON.stringify(fix), fix));
+  return [...fixes.values()];
+}
+
+export function describeCorsCall(issue: CorsIssue): string {
+  let path = issue.url;
+  try {
+    path = new URL(issue.url).pathname;
+  } catch {
+    // Keep the full URL.
+  }
+  return `${issue.preflight ? 'Preflight for ' : ''}${issue.method} ${path}`;
 }
 
 export function describeCorsProblem(problem: CorsProblem, request: Pick<CorsRequest, 'origin'>): string {

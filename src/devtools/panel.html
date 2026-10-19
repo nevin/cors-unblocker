@@ -58,12 +58,25 @@
 
       <section id="details-section" class="tab-section" aria-label="CORS details">
         <div id="details-tabs" class="tabs" role="tablist" aria-label="CORS details views">
-          <button id="tab-current" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-current">Requests <span id="current-count" class="tab-count">0</span></button>
+          <button id="tab-current" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-current">Requests <span id="current-count" class="tab-count">0</span><span id="blocked-tab-count" class="tab-count tab-count--alert" title="Calls blocked by CORS on this page" hidden>0</span></button>
           <button id="tab-rules" class="tab is-active" type="button" role="tab" aria-selected="true" aria-controls="panel-rules">Rules <span id="rules-count" class="tab-count">0</span></button>
           <button id="tab-backup" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-backup">Import/Export</button>
         </div>
         <section id="panel-current" class="tab-panel" role="tabpanel" aria-labelledby="tab-current" hidden>
           <div id="current-panel-title-row" class="panel-title-row"><div><h2>Observed requests</h2><p id="request-scope-help" class="help">Direct and indirect requests observed from the inspected page.</p></div><button id="copy-current-links" type="button">Copy visible</button></div>
+          <section id="cors-blocked" class="cors-blocked" aria-labelledby="cors-blocked-title" hidden>
+            <div class="cors-blocked__header">
+              <div>
+                <h3 id="cors-blocked-title">Blocked by CORS on this page</h3>
+                <p id="cors-blocked-summary" class="help" aria-live="polite"></p>
+              </div>
+              <span class="cors-blocked__actions">
+                <button id="fix-all-cors" type="button" hidden>Fix all</button>
+                <button id="reload-inspected" type="button" class="secondary-button" hidden>Reload page</button>
+              </span>
+            </div>
+            <ul id="cors-blocked-list" class="cors-blocked__list"></ul>
+          </section>
           <div id="request-scope-filter" class="request-scope-filter" role="group" aria-label="Request scope">
             <button class="request-scope-filter__button is-active" data-request-scope="current" type="button">This page <span id="current-request-count" class="tab-count">0</span></button>
             <button class="request-scope-filter__button" data-request-scope="other" type="button">Other tabs <span id="other-count" class="tab-count">0</span></button>

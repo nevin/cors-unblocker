@@ -1,5 +1,5 @@
 import { SettingsController, runtimeApi } from '../shared/browserApi';
-import { CorsFix, CorsIssue, CorsIssueState, applyCorsFixes, describeCorsFix, describeCorsProblem, planIssueFix } from '../shared/corsDiagnosis';
+import { CorsFix, CorsIssue, CorsIssueState, applyCorsFixes, collectCorsFixes, describeCorsCall, describeCorsFix, describeCorsProblem, isOpenCorsIssue, planCorsIssues } from '../shared/corsDiagnosis';
 import { loadTabCorsIssues, onTabCorsIssuesChanged } from '../shared/corsMonitor';
 import { CorsMode, ExtensionSettings, getTrustPatternForRequest, isCorsEnabledForRequest, isCorsSkippedForRequest } from '../shared/settings';
 import { applyTheme } from '../shared/theme';
@@ -144,8 +144,8 @@ async function applyFixes(fixes: CorsFix[], message: string): Promise<void> {
   showNotice(message, false);
 }
 
-function getIssueStates(): Array<{ issue: CorsIssue; state: CorsIssueState; fixes: CorsFix[] }> {
-  return corsIssues.map((issue) => ({ issue, ...planIssueFix(issue, settings) }));
+function getIssueStates(): ReturnType<typeof planCorsIssues> {
+  return planCorsIssues(corsIssues, settings);
 }
 
 function blockedIssueKeys(): Set<string> {
@@ -153,13 +153,7 @@ function blockedIssueKeys(): Set<string> {
 }
 
 function getBulkFixes(): CorsFix[] {
-  const fixes = new Map<string, CorsFix>();
-  getIssueStates()
-    .filter(({ state }) => state === 'blocked')
-    .flatMap(({ fixes: issueFixes }) => issueFixes)
-    .filter((fix) => fix.kind !== 'override-server')
-    .forEach((fix) => fixes.set(JSON.stringify(fix), fix));
-  return [...fixes.values()];
+  return collectCorsFixes(getIssueStates());
 }
 
 function renderCorsIssues(): void {
@@ -169,7 +163,7 @@ function renderCorsIssues(): void {
 
   corsIssuesSection.hidden = !settings.detectCorsIssues || currentTabId === null;
   const states = getIssueStates();
-  const blocked = states.filter(({ state }) => state === 'blocked' || state === 'unfixable');
+  const blocked = states.filter(isOpenCorsIssue);
   const handled = states.filter(({ state }) => state === 'fixed');
   corsIssuesSection.dataset.state = blocked.length > 0 ? 'blocked' : 'clear';
   corsIssuesSummary.textContent = blocked.length > 0
@@ -225,7 +219,7 @@ function renderCorsIssues(): void {
 }
 
 function describeIssueGroup(state: CorsIssueState, issue: CorsIssue, fixedSinceOpened: boolean): string {
-  const call = `${issue.preflight ? 'Preflight for ' : ''}${issue.method} ${getPath(issue.url)}`;
+  const call = describeCorsCall(issue);
   switch (state) {
     case 'fixed':
       return fixedSinceOpened ? `${call}: fixed. Reload the page to retry.` : `${call}: CORS headers added by CORS Unblocker.`;
@@ -248,13 +242,6 @@ function getOrigin(url: string): string {
   }
 }
 
-function getPath(url: string): string {
-  try {
-    return new URL(url).pathname;
-  } catch {
-    return url;
-  }
-}
 
 async function updateSettings(next: Partial<ExtensionSettings>): Promise<void> {
   setBusy(true);

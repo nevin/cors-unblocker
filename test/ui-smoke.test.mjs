@@ -37,6 +37,14 @@ describe('ui source smoke checks', () => {
     assert.equal((html.match(/<h2>Active rules<\/h2>/g) ?? []).length, 1);
   });
 
+  it('popup and DevTools panel expose blocked-call hooks', async () => {
+    const popup = await source('src/popup/index.html');
+    const panel = await source('src/devtools/panel.html');
+
+    ['id="cors-issues"', 'id="cors-issues-list"', 'id="fix-cors"', 'id="reload-tab"', 'id="override-server"'].forEach((token) => assert.ok(popup.includes(token), token));
+    ['id="cors-blocked"', 'id="cors-blocked-list"', 'id="fix-all-cors"', 'id="reload-inspected"', 'id="blocked-tab-count"'].forEach((token) => assert.ok(panel.includes(token), token));
+  });
+
   it('popup uses page-scoped copy', async () => {
     const html = await source('src/popup/index.html');
 
