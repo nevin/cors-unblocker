@@ -5,14 +5,16 @@ import { build, transform } from 'esbuild';
 
 const target = process.argv[2];
 const release = process.argv.includes('--release');
+// Test-only Firefox build for end-to-end tests: adds a control bridge (src/e2e). Never released.
+const e2e = process.argv.includes('--e2e');
 
-if (!['chrome', 'firefox'].includes(target)) {
-  throw new Error('Usage: node scripts/build.mjs <chrome|firefox> [--release]');
+if (!['chrome', 'firefox'].includes(target) || (e2e && (target !== 'firefox' || release))) {
+  throw new Error('Usage: node scripts/build.mjs <chrome|firefox> [--release] | node scripts/build.mjs firefox --e2e');
 }
 
 const root = dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-const outputDirectory = join(root, release ? 'release-dist' : 'dist', target);
+const outputDirectory = join(root, release ? 'release-dist' : e2e ? 'dist-e2e' : 'dist', target);
 const backgroundEntry = target === 'chrome' ? 'src/background/chrome.ts' : 'src/background/firefox.ts';
 
 await mkdir(outputDirectory, { recursive: true });
@@ -20,6 +22,7 @@ await mkdir(outputDirectory, { recursive: true });
 await build({
   entryPoints: [
     join(root, backgroundEntry),
+    ...(e2e ? [join(root, 'src/e2e/firefoxBackground.ts'), join(root, 'src/e2e/bridgeContent.ts')] : []),
     join(root, 'src/popup/popup.ts'),
     join(root, 'src/options/options.ts'),
     join(root, 'src/devtools/devtools.ts'),
@@ -74,5 +77,9 @@ await copyFile(join(root, 'LICENSE'), join(outputDirectory, 'LICENSE'));
 
 const manifest = JSON.parse(await readFile(join(root, `manifest.${target}.json`), 'utf8'));
 manifest.version = packageJson.version;
+if (e2e) {
+  manifest.background.scripts = ['e2e/firefoxBackground.js'];
+  manifest.content_scripts = [{ matches: ['http://*.test/*'], js: ['e2e/bridgeContent.js'], run_at: 'document_start' }];
+}
 await writeFile(join(outputDirectory, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 

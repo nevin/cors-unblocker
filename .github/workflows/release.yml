@@ -44,6 +44,8 @@ jobs:
       - run: npm test
       - run: npm run lint:firefox
       - run: npx playwright install --with-deps chromium
+      # Real-browser suites for both builds; the runner image ships Firefox.
+      - run: firefox --version
       - run: npm run test:e2e
 
       # Builds both zips from this exact commit.

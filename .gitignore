@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-types/
 dist-test/
+dist-e2e/
 release-dist/
 release/
 .DS_Store

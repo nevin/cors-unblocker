@@ -16,7 +16,10 @@
     "check": "tsc --noEmit",
     "build:test": "tsc --outDir dist-test --rootDir src",
     "test": "npm run build:test && node --test test/*.test.mjs",
-    "test:e2e": "npm run build && npm run build:test && node --test --test-concurrency=1 e2e/*.e2e.mjs",
+    "build:e2e": "npm run build && node scripts/build.mjs firefox --e2e && npm run build:test",
+    "test:e2e": "npm run build:e2e && node --test --test-concurrency=1 e2e/*.e2e.mjs",
+    "test:e2e:chrome": "npm run build:e2e && node --test --test-concurrency=1 e2e/chrome.e2e.mjs",
+    "test:e2e:firefox": "npm run build:e2e && node --test --test-concurrency=1 e2e/firefox.e2e.mjs",
     "verify-build": "npm run build && node scripts/verify-build.mjs",
     "lint:firefox": "npm run build:firefox && addons-linter dist/firefox --warnings-as-errors"
   },
@@ -26,6 +29,7 @@
     "addons-linter": "10.13.0",
     "esbuild": "0.25.9",
     "playwright": "1.63.0",
+    "selenium-webdriver": "4.50.0",
     "typescript": "7.0.2"
   }
 }

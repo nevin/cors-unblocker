@@ -15,4 +15,28 @@ for (const target of ['chrome', 'firefox']) {
   }
 }
 
+// The end-to-end control bridge must never reach a normal or release build.
+for (const directory of ['dist', 'release-dist']) {
+  for (const target of ['chrome', 'firefox']) {
+    const output = new URL(`../${directory}/${target}/`, import.meta.url);
+    let manifest;
+    try {
+      manifest = JSON.parse(await readFile(new URL('manifest.json', output), 'utf8'));
+    } catch {
+      continue;
+    }
+    if (manifest.content_scripts || JSON.stringify(manifest).includes('e2e')) {
+      throw new Error(`${directory}/${target} contains the end-to-end test bridge`);
+    }
+    try {
+      await access(new URL('e2e/', output));
+      throw new Error(`${directory}/${target} contains an e2e folder`);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('e2e folder')) {
+        throw error;
+      }
+    }
+  }
+}
+
 console.log('Build artifacts verified.');

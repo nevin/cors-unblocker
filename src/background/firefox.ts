@@ -29,6 +29,12 @@ interface BlockingResponse {
 
 let currentSettings: ExtensionSettings | null = null;
 
+// The settings the header listener is applying right now. Only the end-to-end test build reads this,
+// to know when a settings change has taken effect.
+export function getCurrentSettings(): ExtensionSettings | null {
+  return currentSettings;
+}
+
 const corsMonitor = new CorsMonitor(() => currentSettings, (tabId, text) => {
   // The tab may already be gone; a stale badge update is harmless.
   // Firefox returns a promise here, though the shared typings declare void.

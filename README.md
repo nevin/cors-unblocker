@@ -110,7 +110,9 @@ http://localhost:3000
 - `npm run build` - Build Chrome and Firefox extension folders
 - `npm test` - Run unit tests for shared logic
 - `npm run verify-build` - Build and verify generated extension artifacts
-- `npm run test:e2e` - Load the Chrome build in a real Chromium and run cross-origin requests against a local test server (run `npx playwright install chromium` once first)
+- `npm run test:e2e` - Load the extension into real browsers and make cross-origin calls against a local test server: Chromium through Playwright (run `npx playwright install chromium` once first) and Firefox through Selenium (needs Firefox 140 or later installed). `test:e2e:chrome` and `test:e2e:firefox` run one browser.
+
+  Firefox's WebDriver cannot script extension pages, so the Firefox tests use a test-only build (`dist-e2e/firefox`, from `node scripts/build.mjs firefox --e2e`) that adds a small bridge on `*.test` pages. `verify-build` checks the bridge never reaches a normal or release build.
 - `npm run lint:firefox` - Validate the Firefox build with Mozilla's add-on linter
 
 ## Releasing
