@@ -71,7 +71,8 @@ describe('SettingsController', () => {
       domainRules: [],
       anyOriginTargets: [],
       respectServerCors: true,
-      detectCorsIssues: true
+      detectCorsIssues: true,
+      exposeAllHeaders: true
     });
 
     stored.set('mode', 'global');

@@ -3,11 +3,24 @@ import { createServer } from 'node:http';
 // One server for every test origin. The browser maps *.test to 127.0.0.1, so the Host header tells
 // the sites apart: app.test and evil.test serve blank pages, and api.test is an API that never sends
 // CORS headers itself, so any cross-origin read succeeding proves the extension added them.
+// app.site.test and api.site.test are the same pair on one site, so cookies reach the API.
 export async function startTestServer() {
   const server = createServer((request, response) => {
     const host = (request.headers.host ?? '').split(':')[0];
-    if (host === 'api.test') {
+    if (host === 'api.test' || host === 'api.site.test') {
       const path = new URL(request.url, 'http://api.test').pathname;
+      // An API that allows every origin, which browsers reject once the call sends cookies.
+      if (path.startsWith('/wildcard')) {
+        response.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+        response.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      // An API whose custom header pages can read only once it is exposed.
+      if (path.startsWith('/with-headers') && request.method !== 'OPTIONS') {
+        response.writeHead(200, { 'content-type': 'application/json', 'x-total-count': '42' });
+        response.end(JSON.stringify({ ok: true }));
+        return;
+      }
       // An API that handles CORS itself, credentials included, like most production APIs.
       if (path.startsWith('/cors-ok')) {
         response.writeHead(request.method === 'OPTIONS' ? 204 : 200, {

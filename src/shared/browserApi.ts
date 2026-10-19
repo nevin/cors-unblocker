@@ -4,7 +4,7 @@ type StorageChangeHandler = (settings: ExtensionSettings) => void;
 export type SettingsListener = (settings: ExtensionSettings) => void;
 
 export const runtimeApi = globalThis.browser ?? globalThis.chrome;
-const SETTINGS_FIELDS = ['enabled', 'mode', 'whitelist', 'skiplist', 'allowMethods', 'methodOverrides', 'theme', 'allowAllHeaders', 'allowCredentials', 'domainRules', 'anyOriginTargets', 'respectServerCors', 'detectCorsIssues'] as const satisfies ReadonlyArray<keyof ExtensionSettings>;
+const SETTINGS_FIELDS = ['enabled', 'mode', 'whitelist', 'skiplist', 'allowMethods', 'methodOverrides', 'theme', 'allowAllHeaders', 'allowCredentials', 'domainRules', 'anyOriginTargets', 'respectServerCors', 'detectCorsIssues', 'exposeAllHeaders'] as const satisfies ReadonlyArray<keyof ExtensionSettings>;
 
 type StoredSettings = Partial<ExtensionSettings> & {
   [SETTINGS_KEY]?: Partial<ExtensionSettings>;

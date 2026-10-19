@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { applyCorsFixes, planIssueFix } from '../dist-test/shared/corsDiagnosis.js';
+import { applyCorsFixes, collectCorsFixes, planCorsIssues, planIssueFix } from '../dist-test/shared/corsDiagnosis.js';
 import { buildDynamicRules } from '../dist-test/shared/dnrRules.js';
 import { mergeSettings } from '../dist-test/shared/settings.js';
 import { startTestServer } from './server.mjs';
@@ -21,12 +21,16 @@ let userDataDir;
 let app;
 let evil;
 let api;
+let siteApp;
+let siteApi;
 
 before(async () => {
   server = await startTestServer();
   app = server.origin('app.test');
   evil = server.origin('evil.test');
   api = server.origin('api.test');
+  siteApp = server.origin('app.site.test');
+  siteApi = server.origin('api.site.test');
   userDataDir = await mkdtemp(join(tmpdir(), 'cors-unblocker-e2e-'));
   context = await chromium.launchPersistentContext(userDataDir, {
     channel: 'chromium',
@@ -38,6 +42,8 @@ before(async () => {
     ]
   });
   worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
+  // A same-site session cookie, sent on credentialed calls from app.site.test to api.site.test.
+  await context.addCookies([{ name: 'session', value: 'test', domain: 'api.site.test', path: '/' }]);
 });
 
 after(async () => {
@@ -110,7 +116,7 @@ async function fetchFrom(pageOrigin, url, init = {}) {
     return await page.evaluate(async ({ url, init }) => {
       try {
         const response = await fetch(url, init);
-        return { readable: true, status: response.status, body: await response.json(), apiVersion: response.headers.get('x-api-version') };
+        return { readable: true, status: response.status, body: await response.json(), apiVersion: response.headers.get('x-api-version'), totalCount: response.headers.get('x-total-count') };
       } catch (error) {
         return { readable: false, error: String(error) };
       }
@@ -324,5 +330,78 @@ describe('respecting server CORS headers in a real browser', () => {
 
     const result = await fetchFrom(app, `${api}${freshPath('auth')}`, { headers: { authorization: 'Bearer test-token' } });
     assert.equal(result.readable, true, result.error);
+  });
+});
+
+describe('credentials, exposed headers and Vary in a real browser', () => {
+  const withCookies = { credentials: 'include' };
+
+  it('detects a credentialed call rejected for Allow-Origin: *, and the planned fix makes it work', async () => {
+    await configure({ enabled: false });
+    const tab = await openPage(siteApp);
+    const path = `/wildcard${freshPath('cred')}`;
+    try {
+      assert.equal((await tab.fetchHere(`${siteApi}${path}`, withCookies)).readable, false);
+      // Without cookies, the same wildcard answer is fine and nothing is recorded for it.
+      assert.equal((await tab.fetchHere(`${siteApi}/wildcard${freshPath('no-cookies')}`)).readable, true);
+      await waitFor(async () => (await tab.issues()).length === 1, 'the credentialed call to be detected');
+
+      const [issue] = await tab.issues();
+      assert.equal(issue.credentialed, true);
+      assert.equal(issue.problem.reason, 'credentials-wildcard');
+
+      const settings = mergeSettings({ enabled: false });
+      const fixes = collectCorsFixes(planCorsIssues([issue], settings), { includeOverride: true });
+      assert.deepEqual(fixes.map((fix) => fix.kind), ['enable', 'trust-page', 'override-server', 'allow-credentials']);
+      await configure({ ...settings, ...applyCorsFixes(settings, fixes) });
+
+      const fixed = await tab.fetchHere(`${siteApi}${path}`, withCookies);
+      assert.equal(fixed.readable, true, fixed.error);
+    } finally {
+      await tab.page.close();
+    }
+  });
+
+  it('asks for credentials when a trusted page sends cookies, and works once allowed', async () => {
+    await configure({ enabled: true, whitelist: [siteApp] });
+    const tab = await openPage(siteApp);
+    const path = freshPath('needs-credentials');
+    try {
+      assert.equal((await tab.fetchHere(`${siteApi}${path}`, withCookies)).readable, false);
+      await waitFor(async () => (await tab.issues()).length === 1, 'the credentialed call to be detected');
+
+      const [issue] = await tab.issues();
+      const settings = mergeSettings({ enabled: true, whitelist: [siteApp] });
+      assert.deepEqual(planIssueFix(issue, settings).fixes, [{ kind: 'allow-credentials' }]);
+
+      await configure({ ...settings, allowCredentials: true });
+      const fixed = await tab.fetchHere(`${siteApi}${path}`, withCookies);
+      assert.equal(fixed.readable, true, fixed.error);
+      await waitFor(async () => (await tab.badge()) === '', 'the badge to clear');
+    } finally {
+      await tab.page.close();
+    }
+  });
+
+  it('lets pages read custom response headers only when headers are exposed', async () => {
+    await configure({ enabled: true, whitelist: [app] });
+    assert.equal((await fetchFrom(app, `${api}/with-headers${freshPath('expose')}`)).totalCount, '42');
+
+    await configure({ enabled: true, whitelist: [app], exposeAllHeaders: false });
+    const hidden = await fetchFrom(app, `${api}/with-headers${freshPath('hidden')}`);
+    assert.equal(hidden.readable, true);
+    assert.equal(hidden.totalCount, null);
+  });
+
+  // Chrome reports response headers to DevTools and extensions before rules modify them, so the added
+  // Vary header cannot be read back; Chrome rejecting an invalid rule would fail configure() instead.
+  it('installs a Vary: Origin rule alongside a credentialed response origin', async () => {
+    await configure({ enabled: true, whitelist: [siteApp], allowCredentials: true });
+
+    const installed = await worker.evaluate(() => chrome.declarativeNetRequest.getDynamicRules());
+    const headers = installed.flatMap((rule) => rule.action.responseHeaders ?? []);
+    assert.ok(headers.some((header) => header.header === 'access-control-allow-origin' && header.value === siteApp));
+    assert.ok(headers.some((header) => header.header === 'vary' && header.operation === 'append' && header.value === 'Origin'));
+    assert.equal((await fetchFrom(siteApp, `${siteApi}${freshPath('vary')}`, withCookies)).readable, true);
   });
 });

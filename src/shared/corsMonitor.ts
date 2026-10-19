@@ -92,6 +92,7 @@ export class CorsMonitor {
       method,
       preflight,
       requestedHeaders: request.requestedHeaders,
+      credentialed: request.credentialed,
       problem,
       serverSentAllowOrigin: headerValue(responseHeaders, 'access-control-allow-origin') !== null,
       count: 1,

@@ -153,3 +153,51 @@ describe('CORS issue lists', () => {
     assert.equal(describeCorsCall(issues[1]), 'Preflight for PATCH /v1/orders');
   });
 });
+
+describe('credentialed calls', () => {
+  const credentialed = (method = 'GET') => request(method, { Cookie: 'session=1' });
+  const cors = (values) => headers({ 'Access-Control-Allow-Origin': app, ...values });
+
+  it('treats a Cookie header as credentials mode', () => {
+    assert.equal(credentialed().credentialed, true);
+    assert.equal(request('GET').credentialed, false);
+  });
+
+  it('reports a wildcard origin and a missing Allow-Credentials', () => {
+    assert.deepEqual(findCorsProblem(credentialed(), 200, headers({ 'Access-Control-Allow-Origin': '*' })), { reason: 'credentials-wildcard', detail: null });
+    assert.deepEqual(findCorsProblem(credentialed(), 200, cors({})), { reason: 'credentials-not-allowed', detail: null });
+    assert.equal(findCorsProblem(credentialed(), 200, cors({ 'Access-Control-Allow-Credentials': 'true' })), null);
+    assert.equal(findCorsProblem(request('GET'), 200, headers({ 'Access-Control-Allow-Origin': '*' })), null);
+  });
+
+  it('plans credentials, exact-origin trust and a server override', () => {
+    const plan = planCorsFix(credentialed(), { reason: 'credentials-wildcard', detail: null }, true, mergeSettings({}));
+    assert.deepEqual(plan.fixes, [
+      { kind: 'enable' },
+      { kind: 'trust-page', pattern: 'http://localhost:3000/*' },
+      { kind: 'override-server' },
+      { kind: 'allow-credentials' }
+    ]);
+  });
+
+  it('requires trusting the exact origin when the page is only trusted by wildcard', () => {
+    const settings = mergeSettings({ enabled: true, whitelist: ['localhost'], allowCredentials: true });
+    assert.deepEqual(planCorsFix(credentialed(), { reason: 'missing-allow-origin', detail: null }, false, settings).fixes, [
+      { kind: 'trust-page', pattern: 'http://localhost:3000/*' }
+    ]);
+  });
+
+  it('leaves global mode for credentialed calls', () => {
+    const settings = mergeSettings({ enabled: true, mode: 'global', allowCredentials: true });
+    const plan = planCorsFix(credentialed(), { reason: 'missing-allow-origin', detail: null }, false, settings);
+    assert.deepEqual(plan.fixes, [{ kind: 'whitelist-mode' }, { kind: 'trust-page', pattern: 'http://localhost:3000/*' }]);
+    const fixed = mergeSettings({ ...settings, ...applyCorsFixes(settings, plan.fixes) });
+    assert.deepEqual(planCorsFix(credentialed(), { reason: 'missing-allow-origin', detail: null }, false, fixed), { state: 'fixed', fixes: [] });
+  });
+
+  it('describes credentials problems', () => {
+    assert.match(describeCorsProblem({ reason: 'credentials-wildcard', detail: null }, { origin: app }), /Allow-Origin: \*/);
+    assert.match(describeCorsFix({ kind: 'allow-credentials' }), /Allow credentials/);
+  });
+});
+

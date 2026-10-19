@@ -1,4 +1,4 @@
-import { ExtensionSettings, getAllowedMethodsForRequest, getTrustPatternForRequest, isCorsEnabledForRequest, isCorsSkippedForRequest, mergeSettings } from './settings.js';
+import { ExtensionSettings, getAllowedMethodsForRequest, getExplicitPatternOrigin, getTrustPatternForRequest, isCorsEnabledForRequest, isCorsSkippedForRequest, mergeSettings } from './settings.js';
 
 export interface HttpHeader {
   name: string;
@@ -13,9 +13,12 @@ export interface CorsRequest {
   fetchMode: string | null;
   requestedMethod: string | null;
   requestedHeaders: string[];
+  // Browsers attach cookies to a cross-origin CORS request only in credentials mode, so a Cookie
+  // header marks a credentialed call. Credentialed calls without cookies cannot be told apart.
+  credentialed: boolean;
 }
 
-export type CorsProblemReason = 'missing-allow-origin' | 'origin-mismatch' | 'preflight-status' | 'method-not-allowed' | 'headers-not-allowed';
+export type CorsProblemReason = 'missing-allow-origin' | 'origin-mismatch' | 'credentials-wildcard' | 'credentials-not-allowed' | 'preflight-status' | 'method-not-allowed' | 'headers-not-allowed';
 
 export interface CorsProblem {
   reason: CorsProblemReason;
@@ -27,6 +30,8 @@ export type CorsFix =
   | { kind: 'trust-page'; pattern: string }
   | { kind: 'allow-method'; method: string }
   | { kind: 'allow-headers' }
+  | { kind: 'allow-credentials' }
+  | { kind: 'whitelist-mode' }
   | { kind: 'override-server' };
 
 export type CorsIssueState = 'fixed' | 'blocked' | 'skipped' | 'unfixable';
@@ -46,6 +51,7 @@ export interface CorsIssue {
   method: string;
   preflight: boolean;
   requestedHeaders: string[];
+  credentialed?: boolean;
   problem: CorsProblem;
   serverSentAllowOrigin: boolean;
   count: number;
@@ -61,7 +67,8 @@ export function toCorsRequest(issue: CorsIssue): CorsRequest {
     origin: issue.pageOrigin,
     fetchMode: 'cors',
     requestedMethod: issue.preflight ? issue.method : null,
-    requestedHeaders: issue.requestedHeaders
+    requestedHeaders: issue.requestedHeaders,
+    credentialed: issue.credentialed === true
   };
 }
 
@@ -87,7 +94,8 @@ export function readCorsRequest(url: string, method: string, requestHeaders: Htt
     origin: headerValue(requestHeaders, 'origin'),
     fetchMode: headerValue(requestHeaders, 'sec-fetch-mode'),
     requestedMethod: headerValue(requestHeaders, 'access-control-request-method')?.toUpperCase() ?? null,
-    requestedHeaders: splitList(headerValue(requestHeaders, 'access-control-request-headers')).map((header) => header.toLowerCase())
+    requestedHeaders: splitList(headerValue(requestHeaders, 'access-control-request-headers')).map((header) => header.toLowerCase()),
+    credentialed: headerValue(requestHeaders, 'cookie') !== null
   };
 }
 
@@ -123,6 +131,15 @@ export function findCorsProblem(request: CorsRequest, statusCode: number, respon
   }
   if (allowOrigin !== '*' && allowOrigin !== request.origin) {
     return { reason: 'origin-mismatch', detail: allowOrigin };
+  }
+
+  if (request.credentialed && !preflight) {
+    if (allowOrigin === '*') {
+      return { reason: 'credentials-wildcard', detail: null };
+    }
+    if (headerValue(responseHeaders, 'access-control-allow-credentials')?.trim() !== 'true') {
+      return { reason: 'credentials-not-allowed', detail: null };
+    }
   }
 
   if (preflight && request.requestedMethod) {
@@ -171,6 +188,22 @@ export function planCorsFix(request: CorsRequest, problem: CorsProblem, serverSe
     fixes.push({ kind: 'override-server' });
   }
 
+  // Credentialed calls need the page's exact origin echoed back with Allow-Credentials, which only
+  // whitelist mode does, and only for pages trusted by their exact origin.
+  if (request.credentialed && request.origin) {
+    if (settings.mode === 'global') {
+      fixes.push({ kind: 'whitelist-mode' });
+    }
+    if (!settings.allowCredentials) {
+      fixes.push({ kind: 'allow-credentials' });
+    }
+    const exactPattern = getTrustPatternForRequest(request.url, request.origin);
+    const trustedExactly = settings.whitelist.some((pattern) => getExplicitPatternOrigin(pattern) === request.origin);
+    if (exactPattern && !trustedExactly && !fixes.some((fix) => fix.kind === 'trust-page')) {
+      fixes.push({ kind: 'trust-page', pattern: exactPattern });
+    }
+  }
+
   if (isPreflight(request) && request.requestedMethod && !SIMPLE_METHODS.has(request.requestedMethod)) {
     const fixed = mergeSettings({ ...settings, ...applyCorsFixes(settings, fixes) });
     if (!getAllowedMethodsForRequest(request.url, initiator, fixed).includes(request.requestedMethod)) {
@@ -202,6 +235,12 @@ export function applyCorsFixes(settings: ExtensionSettings, fixes: CorsFix[]): P
         break;
       case 'allow-headers':
         next.allowAllHeaders = true;
+        break;
+      case 'allow-credentials':
+        next.allowCredentials = true;
+        break;
+      case 'whitelist-mode':
+        next.mode = 'whitelist';
         break;
       case 'override-server':
         next.respectServerCors = false;
@@ -251,6 +290,10 @@ export function describeCorsProblem(problem: CorsProblem, request: Pick<CorsRequ
       return 'The response has no Access-Control-Allow-Origin header.';
     case 'origin-mismatch':
       return `The server allows ${problem.detail ?? 'another origin'}, not ${request.origin ?? 'this page'}.`;
+    case 'credentials-wildcard':
+      return 'The call sends cookies, but the server answers Access-Control-Allow-Origin: *, which browsers reject for credentialed calls.';
+    case 'credentials-not-allowed':
+      return 'The call sends cookies, but the response lacks Access-Control-Allow-Credentials: true.';
     case 'preflight-status':
       return `The server answered the preflight (OPTIONS) request with ${problem.detail ?? 'an error'}. It must return a 2xx status; the extension cannot change status codes.`;
     case 'method-not-allowed':
@@ -270,6 +313,10 @@ export function describeCorsFix(fix: CorsFix): string {
       return `Allow the ${fix.method} method`;
     case 'allow-headers':
       return 'Allow all request headers';
+    case 'allow-credentials':
+      return 'Allow credentials (send this page\'s origin instead of *)';
+    case 'whitelist-mode':
+      return 'Switch to whitelist mode (credentials do not work in global mode)';
     case 'override-server':
       return 'Override CORS headers the server already sends (affects every trusted page)';
   }

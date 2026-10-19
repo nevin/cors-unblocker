@@ -50,7 +50,7 @@
 
           <details id="advanced-headers" class="advanced-options">
             <summary>Advanced headers</summary>
-            <label class="header-option"><input id="allow-all-headers" type="checkbox" /> <span><strong>Allow all request headers</strong><small>Sets Access-Control-Allow-Headers to *, Authorization</small><em id="headers-warning" hidden>Wildcard headers may not work with credentialed requests.</em></span></label>
+            <label class="header-option"><input id="allow-all-headers" type="checkbox" /> <span><strong>Allow all request headers</strong><small>Sets Access-Control-Allow-Headers to *, plus Authorization and other common headers by name</small><em id="headers-warning" hidden>Wildcard headers may not work with credentialed requests.</em></span></label>
             <label class="header-option"><input id="allow-credentials" type="checkbox" /> <span><strong>Allow credentials</strong><small>Uses the initiator origin instead of *.</small><em id="credentials-hint">Use an explicit http(s) origin pattern in Chrome. Reload open tabs after changing this.</em></span></label>
           </details>
         </section>

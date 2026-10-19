@@ -18,6 +18,7 @@ export interface RulesExport {
   allowCredentials: boolean;
   anyOriginTargets?: string[];
   respectServerCors?: boolean;
+  exposeAllHeaders?: boolean;
 }
 
 export interface ExtensionSettings {
@@ -38,6 +39,8 @@ export interface ExtensionSettings {
   respectServerCors: boolean;
   // Watch cross-origin API calls for CORS failures and report them per tab, even while overrides are off.
   detectCorsIssues: boolean;
+  // Let pages read every response header (such as X-Total-Count), not just the CORS-safelisted few.
+  exposeAllHeaders: boolean;
 }
 
 export type EffectiveCorsRule =
@@ -64,6 +67,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   ,anyOriginTargets: []
   ,respectServerCors: true
   ,detectCorsIssues: true
+  ,exposeAllHeaders: true
 };
 
 export const SETTINGS_KEY = 'corsDevControlSettings';
@@ -164,7 +168,8 @@ export function exportRules(settings: ExtensionSettings): string {
     allowAllHeaders: settings.allowAllHeaders,
     allowCredentials: settings.allowCredentials,
     anyOriginTargets: settings.anyOriginTargets,
-    respectServerCors: settings.respectServerCors
+    respectServerCors: settings.respectServerCors,
+    exposeAllHeaders: settings.exposeAllHeaders
   };
 
   return `${JSON.stringify(rules, null, 2)}\n`;
@@ -186,7 +191,8 @@ export function importRules(value: string): Partial<ExtensionSettings> {
     allowAllHeaders: rules.allowAllHeaders === true,
     allowCredentials: rules.allowCredentials === true,
     anyOriginTargets: Array.isArray(rules.anyOriginTargets) ? rules.anyOriginTargets : [],
-    respectServerCors: rules.respectServerCors !== false
+    respectServerCors: rules.respectServerCors !== false,
+    exposeAllHeaders: rules.exposeAllHeaders !== false
   };
 }
 
@@ -228,6 +234,7 @@ export function mergeSettings(value: Partial<ExtensionSettings> | undefined): Ex
     ,anyOriginTargets: normalizeAnyOriginTargets(value)
     ,respectServerCors: typeof value?.respectServerCors === 'boolean' ? value.respectServerCors : DEFAULT_SETTINGS.respectServerCors
     ,detectCorsIssues: typeof value?.detectCorsIssues === 'boolean' ? value.detectCorsIssues : DEFAULT_SETTINGS.detectCorsIssues
+    ,exposeAllHeaders: typeof value?.exposeAllHeaders === 'boolean' ? value.exposeAllHeaders : DEFAULT_SETTINGS.exposeAllHeaders
   };
 }
 
@@ -329,6 +336,13 @@ export function isRequestMethodAllowed(method: string, url: string, initiatorUrl
   }
 
   return getAllowedMethodsForRequest(url, initiatorUrl, settings).includes(method.toUpperCase());
+}
+
+// The single origin a pattern names, such as 'http://localhost:3000' for 'http://localhost:3000/*'.
+// Credentialed responses must name the page's exact origin, so only these patterns can serve them.
+export function getExplicitPatternOrigin(pattern: string): string | null {
+  const match = /^(https?):\/\/([^/*]+)\//.exec(pattern);
+  return match?.[1] && match[2] ? `${match[1]}://${match[2]}` : null;
 }
 
 export function isCredentialsSupported(settings: ExtensionSettings): boolean {

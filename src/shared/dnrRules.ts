@@ -1,10 +1,10 @@
-import { ExtensionSettings, getActivePatterns, getPatternHost, isAnyOriginTarget, isCredentialsSupported, toUrlPatternRegExpSource } from './settings.js';
+import { ExtensionSettings, getActivePatterns, getExplicitPatternOrigin, getPatternHost, isAnyOriginTarget, isCredentialsSupported, toUrlPatternRegExpSource } from './settings.js';
 
 // Structural mirror of chrome.declarativeNetRequest.Rule using plain strings, so rules can be built and
 // tested outside the browser. The Chrome background casts these to the real type when applying them.
 export interface DnrHeader {
   header: string;
-  operation: 'set';
+  operation: 'set' | 'append';
   value: string;
 }
 
@@ -35,8 +35,9 @@ const INDIVIDUAL_RULE_PRIORITY_BASE = 3_000;
 // Above every modifyHeaders rule, so a matching skip rule stops all of this extension's header changes.
 const SKIP_RULE_PRIORITY = 10_000;
 
-// Wildcard Allow-Headers never covers Authorization, so it is listed by name.
-export const ALLOW_ALL_HEADERS_VALUE = '*, Authorization';
+// Wildcard Allow-Headers never covers Authorization, and with credentials browsers read '*' as a literal
+// header name. Common request headers are listed by name so credentialed calls can still send them.
+export const ALLOW_ALL_HEADERS_VALUE = '*, Authorization, Content-Type, Accept, X-Requested-With, X-CSRF-Token, X-XSRF-Token, X-Api-Key, Cache-Control, If-Match, If-None-Match, If-Modified-Since';
 
 const RESOURCE_TYPES = ['main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font', 'object', 'xmlhttprequest', 'ping', 'media', 'websocket', 'other'];
 
@@ -71,8 +72,8 @@ export function buildDynamicRules(settings: ExtensionSettings): DnrRule[] {
 function createPatternRules(pattern: string, settings: ExtensionSettings): Array<Omit<DnrRule, 'id'>> {
   const allowedMethods = settings.methodOverrides[pattern] ?? settings.allowMethods;
   const credentialsActive = settings.allowCredentials && isCredentialsSupported(settings);
-  const responseOrigin = credentialsActive ? getPatternOrigin(pattern) : null;
-  const responseHeaders = createResponseHeaders(allowedMethods, settings.allowAllHeaders, credentialsActive, responseOrigin);
+  const responseOrigin = credentialsActive ? getExplicitPatternOrigin(pattern) : null;
+  const responseHeaders = createResponseHeaders(allowedMethods, settings, credentialsActive, responseOrigin);
   const isIndividualPattern = settings.whitelist.includes(pattern);
   const priority = pattern === '<all_urls>'
     ? GLOBAL_RULE_PRIORITY
@@ -133,13 +134,23 @@ function createSkipRules(pattern: string): Array<Omit<DnrRule, 'id'>> {
   return rules;
 }
 
-function createResponseHeaders(methods: string[], allowAllHeaders: boolean, allowCredentials: boolean, origin: string | null): DnrHeader[] {
+function createResponseHeaders(methods: string[], settings: ExtensionSettings, allowCredentials: boolean, origin: string | null): DnrHeader[] {
   const headers: DnrHeader[] = [
     { header: 'access-control-allow-origin', operation: 'set', value: origin ?? '*' },
     { header: 'access-control-allow-methods', operation: 'set', value: methods.join(', ') }
   ];
 
-  if (allowAllHeaders) {
+  // A response that names one origin differs per requesting page, so caches must key on Origin.
+  if (origin) {
+    headers.push({ header: 'vary', operation: 'append', value: 'Origin' });
+  }
+
+  // DNR rules are static, so Chrome can only send '*'; browsers ignore that wildcard on credentialed calls.
+  if (settings.exposeAllHeaders) {
+    headers.push({ header: 'access-control-expose-headers', operation: 'set', value: '*' });
+  }
+
+  if (settings.allowAllHeaders) {
     headers.push({ header: 'access-control-allow-headers', operation: 'set', value: ALLOW_ALL_HEADERS_VALUE });
   }
 
@@ -150,10 +161,6 @@ function createResponseHeaders(methods: string[], allowAllHeaders: boolean, allo
   return headers;
 }
 
-function getPatternOrigin(pattern: string): string | null {
-  const match = /^(https?):\/\/([^/]+)\//.exec(pattern);
-  return match?.[1] && match[2] ? `${match[1]}://${match[2]}` : null;
-}
 
 // Uses the same regex as the shared matcher so Chrome and Firefox agree on what a pattern covers.
 function toDnrUrlCondition(pattern: string): Pick<DnrCondition, 'urlFilter' | 'regexFilter' | 'isUrlFilterCaseSensitive'> {

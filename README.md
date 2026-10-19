@@ -11,11 +11,17 @@ This is a development tool. Keep it disabled when you are not actively debugging
 You don't have to wait for a console error. The extension checks every cross-origin API call (fetch and XHR) the way the browser will, using the server's own response headers, even while overrides are off:
 
 - A red count on the toolbar icon shows how many calls on the current tab are blocked by CORS.
-- The popup lists them by API with the reason, for example a missing `Access-Control-Allow-Origin`, a server that allows a different origin, or a preflight that rejects your method or headers.
-- **Fix blocked calls** applies exactly the changes needed (turn on overrides, trust the page, allow a method or headers) and tells you what it will change first. Then reload the page to retry.
+- The popup and the DevTools **CORS** panel list them with the reason, for example a missing `Access-Control-Allow-Origin`, a server that allows a different origin, a preflight that rejects your method or headers, or a call that sends cookies to a server answering `Access-Control-Allow-Origin: *`.
+- **Fix blocked calls** applies exactly the changes needed (turn on overrides, trust the page, allow a method, headers or credentials) and tells you what it will change first. Then reload the page to retry.
 - Problems no header can fix, such as a preflight answered with 404 or 405, are explained instead of hidden.
 
 Only failing cross-origin calls are kept, without query strings, per tab, for the browser session. They are cleared when the tab navigates or closes, and never leave your browser. Turn detection off in Options under **Blocked-call detection**.
+
+## Cookies, response headers and caching
+
+- **Credentials:** a call that sends cookies needs the page's exact origin and `Access-Control-Allow-Credentials: true` instead of `*`. The extension spots these calls by their `Cookie` header and suggests **Allow credentials**. That works in whitelist mode, for pages trusted by their exact origin (such as `http://localhost:3000`). Credentialed calls that carry no cookies can't be detected.
+- **Exposed headers:** pages can only read a few response headers (such as `Content-Type`) unless the response exposes the rest. **Expose all response headers** (on by default) makes custom headers like `X-Total-Count` readable.
+- **Caching:** whenever the extension sends a specific origin rather than `*`, it adds `Vary: Origin` so caches don't serve one page's response to another.
 
 ## Respecting server CORS headers
 
@@ -43,6 +49,7 @@ Chrome rules are generated from the same pattern matcher Firefox uses, and a par
 - A trusted page with a wildcard in the middle of the host, such as `https://www.*.example.com`, cannot be matched as a page, so its requests are not relaxed.
 - A skip pattern with a path skips matching request URLs, but not requests made by pages under that path.
 - With **Allow credentials** on, Chrome cannot echo the requesting origin, so "Any site may read" has no effect. Requests made by trusted pages still work.
+- On calls that send cookies, browsers read `*` literally in `Access-Control-Expose-Headers` and `Access-Control-Allow-Headers`. Chrome rules are static, so exposed headers don't apply to those calls, and only commonly used request headers (`Authorization`, `Content-Type`, `X-Requested-With`, CSRF tokens, `X-Api-Key` and a few more) are allowed by name. Firefox lists the actual response header names.
 
 ## Features
 

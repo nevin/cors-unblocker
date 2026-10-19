@@ -22,6 +22,7 @@ const selectDefaultMethodsButton = document.querySelector<HTMLButtonElement>('#s
 const allowAllHeadersInput = document.querySelector<HTMLInputElement>('#allow-all-headers');
 const allowCredentialsInput = document.querySelector<HTMLInputElement>('#allow-credentials');
 const respectServerCorsInput = document.querySelector<HTMLInputElement>('#respect-server-cors');
+const exposeAllHeadersInput = document.querySelector<HTMLInputElement>('#expose-all-headers');
 const detectCorsIssuesInput = document.querySelector<HTMLInputElement>('#detect-cors-issues');
 const credentialsHint = document.querySelector<HTMLElement>('#credentials-hint');
 const headersWarning = document.querySelector<HTMLElement>('#headers-warning');
@@ -94,6 +95,9 @@ async function initialize(): Promise<void> {
 
   allowAllHeadersInput?.addEventListener('change', () => {
     void updateSettings({ allowAllHeaders: allowAllHeadersInput.checked });
+  });
+  exposeAllHeadersInput?.addEventListener('change', () => {
+    void updateSettings({ exposeAllHeaders: exposeAllHeadersInput.checked });
   });
   respectServerCorsInput?.addEventListener('change', () => {
     void updateSettings({ respectServerCors: respectServerCorsInput.checked });
@@ -256,6 +260,9 @@ function render(): void {
   }
   if (respectServerCorsInput) {
     respectServerCorsInput.checked = settings.respectServerCors;
+  }
+  if (exposeAllHeadersInput) {
+    exposeAllHeadersInput.checked = settings.exposeAllHeaders;
   }
   if (detectCorsIssuesInput) {
     detectCorsIssuesInput.checked = settings.detectCorsIssues;

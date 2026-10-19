@@ -179,4 +179,20 @@ describe('known Chrome limitations', () => {
     assert.equal(simulateChrome(buildDynamicRules(respect), 'https://api.dev/data', 'http://localhost:3000').get('access-control-allow-origin'), '*');
     assert.ok(buildDynamicRules(respect).filter((rule) => rule.action.type === 'allow').every((rule) => !rule.condition.excludedResponseHeaders));
   });
+
+  it('exposes response headers and varies credentialed responses by Origin', () => {
+    const plain = buildDynamicRules(mergeSettings({ enabled: true, whitelist: ['http://localhost:3000'] }));
+    const plainHeaders = simulateChrome(plain, 'https://api.dev/data', 'http://localhost:3000');
+    assert.equal(plainHeaders.get('access-control-expose-headers'), '*');
+    assert.equal(plainHeaders.has('vary'), false);
+
+    const credentialed = buildDynamicRules(mergeSettings({ enabled: true, whitelist: ['http://localhost:3000'], allowCredentials: true }));
+    const varyHeader = credentialed.flatMap((rule) => rule.action.responseHeaders ?? []).find((header) => header.header === 'vary');
+    assert.deepEqual(varyHeader, { header: 'vary', operation: 'append', value: 'Origin' });
+    assert.equal(simulateChrome(credentialed, 'https://api.dev/data', 'http://localhost:3000').get('access-control-allow-origin'), 'http://localhost:3000');
+
+    const hidden = buildDynamicRules(mergeSettings({ enabled: true, whitelist: ['http://localhost:3000'], exposeAllHeaders: false }));
+    assert.equal(simulateChrome(hidden, 'https://api.dev/data', 'http://localhost:3000').has('access-control-expose-headers'), false);
+  });
 });
+

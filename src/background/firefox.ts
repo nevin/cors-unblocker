@@ -105,21 +105,40 @@ function handleHeadersReceived(details: HeadersReceivedDetails): BlockingRespons
     return {};
   }
 
-  const responseHeaders = upsertCorsHeaders(details.responseHeaders ?? [], getAllowedMethodsForRequest(details.url, initiatorUrl, settings), settings.allowAllHeaders, credentialsActive, initiatorUrl);
+  const responseHeaders = upsertCorsHeaders(details.responseHeaders ?? [], getAllowedMethodsForRequest(details.url, initiatorUrl, settings), settings, credentialsActive, initiatorUrl);
   return { responseHeaders };
 }
 
-function upsertCorsHeaders(headers: FirefoxHeader[], allowMethods: string[], allowAllHeaders: boolean, allowCredentials: boolean, initiatorUrl: string | undefined): FirefoxHeader[] {
+// Response headers pages can always read; everything else needs Access-Control-Expose-Headers.
+const SAFELISTED_RESPONSE_HEADERS = new Set(['cache-control', 'content-language', 'content-length', 'content-type', 'expires', 'last-modified', 'pragma']);
+
+function upsertCorsHeaders(headers: FirefoxHeader[], allowMethods: string[], settings: ExtensionSettings, allowCredentials: boolean, initiatorUrl: string | undefined): FirefoxHeader[] {
+  const allowAllHeaders = settings.allowAllHeaders;
+  const echoOrigin = allowCredentials && initiatorUrl ? new URL(initiatorUrl).origin : null;
   const next = headers.filter((header) => {
     const name = header.name.toLowerCase();
     return !['access-control-allow-origin', 'access-control-allow-methods', 'access-control-allow-credentials'].includes(name)
-      && !(allowAllHeaders && name === 'access-control-allow-headers');
+      && !(allowAllHeaders && name === 'access-control-allow-headers')
+      && !(settings.exposeAllHeaders && name === 'access-control-expose-headers')
+      && !(echoOrigin && name === 'vary');
   });
 
   next.push(
-    { name: 'Access-Control-Allow-Origin', value: allowCredentials && initiatorUrl ? new URL(initiatorUrl).origin : '*' },
+    { name: 'Access-Control-Allow-Origin', value: echoOrigin ?? '*' },
     { name: 'Access-Control-Allow-Methods', value: allowMethods.join(', ') }
   );
+
+  // A response that names one origin differs per requesting page, so caches must key on Origin.
+  if (echoOrigin) {
+    const vary = headers.filter((header) => header.name.toLowerCase() === 'vary').flatMap((header) => (header.value ?? '').split(',')).map((value) => value.trim()).filter(Boolean);
+    next.push({ name: 'Vary', value: [...new Set([...vary, 'Origin'])].join(', ') });
+  }
+
+  // Credentialed calls ignore a '*' wildcard, so list this response's own header names instead.
+  if (settings.exposeAllHeaders) {
+    const names = [...new Set(headers.map((header) => header.name.toLowerCase()))].filter((name) => !SAFELISTED_RESPONSE_HEADERS.has(name) && name !== 'set-cookie');
+    next.push({ name: 'Access-Control-Expose-Headers', value: echoOrigin ? names.join(', ') : '*' });
+  }
 
   if (allowAllHeaders) {
     next.push({ name: 'Access-Control-Allow-Headers', value: ALLOW_ALL_HEADERS_VALUE });
