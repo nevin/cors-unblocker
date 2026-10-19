@@ -119,6 +119,13 @@ http://localhost:3000
 
 CORS Unblocker never sends data anywhere. See [PRIVACY.md](PRIVACY.md).
 
+## Publishing to the stores
+
+- Chrome Web Store: [docs/chrome-web-store.md](docs/chrome-web-store.md)
+- Firefox Add-ons: [docs/firefox-add-ons.md](docs/firefox-add-ons.md)
+
+Each GitHub release has the Chrome zip, the Firefox zip, and the source archive Firefox Add-ons reviewers need.
+
 ## Releasing
 
 1. Set the version in `package.json` (`npm version 0.3.0 --no-git-tag-version`) and in both `manifest.*.json` files.

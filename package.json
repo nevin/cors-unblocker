@@ -13,6 +13,7 @@
     "build:firefox": "node scripts/build.mjs firefox",
     "build:release": "npm run clean && node scripts/build.mjs chrome --release && node scripts/build.mjs firefox --release",
     "package": "npm run build:release && node scripts/package.mjs",
+    "package:source": "node scripts/package-source.mjs",
     "check": "tsc --noEmit",
     "build:test": "tsc --outDir dist-test --rootDir src",
     "test": "npm run build:test && node --test test/*.test.mjs",

@@ -14,7 +14,7 @@ import { startTestServer } from './server.mjs';
 // The test-only build (scripts/build.mjs firefox --e2e) adds a bridge content script on *.test pages:
 // Firefox's WebDriver cannot script extension pages, so the tests talk to the extension through it.
 const extensionPath = fileURLToPath(new URL('../dist-e2e/firefox', import.meta.url));
-const ADDON_ID = 'cors-dev-tool@example.local';
+const ADDON_ID = 'cors-unblocker@nevin.github.io';
 const ADDON_UUID = '6f1c3c0e-2b9b-4d5e-9a51-6c0f2e7b8a11';
 const TEST_HOSTS = ['app.test', 'evil.test', 'api.test', 'app.site.test', 'api.site.test'];
 const REQUEST_LOG_KEY = 'corsDevControlRequestLog';

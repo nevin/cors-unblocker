@@ -41,7 +41,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "cors-dev-tool@example.local",
+      "id": "cors-unblocker@nevin.github.io",
       "strict_min_version": "140.0",
       "data_collection_permissions": {
         "required": [

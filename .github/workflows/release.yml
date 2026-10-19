@@ -48,8 +48,9 @@ jobs:
       - run: firefox --version
       - run: npm run test:e2e
 
-      # Builds both zips from this exact commit.
+      # Builds both zips from this exact commit, plus the source archive Firefox Add-ons reviewers need.
       - run: npm run package
+      - run: npm run package:source
       - name: Write checksums
         run: |
           cd release
