@@ -42,7 +42,7 @@ Chrome rules are generated from the same pattern matcher Firefox uses, and a par
 - In whitelist mode, relaxes requests made by trusted pages; a rule's responses are opened to other sites only with a per-rule opt-in
 - Allowed methods control the CORS preflight response and do not block network requests.
 - Chrome/Edge Manifest V3 build using Declarative Net Request
-- Firefox build using response header interception (Firefox 115 or later)
+- Firefox build using response header interception (Firefox 140 or later)
 - Request discovery records only while overrides are enabled, drops query strings and fragments, and is kept in session storage, so it is never written to disk and is cleared when the browser closes
 
 ## Setup
@@ -84,6 +84,8 @@ http://localhost:3000
 - `npm run build` - Build Chrome and Firefox extension folders
 - `npm test` - Run unit tests for shared logic
 - `npm run verify-build` - Build and verify generated extension artifacts
+- `npm run test:e2e` - Load the Chrome build in a real Chromium and run cross-origin requests against a local test server (run `npx playwright install chromium` once first)
+- `npm run lint:firefox` - Validate the Firefox build with Mozilla's add-on linter
 
 ## License
 
