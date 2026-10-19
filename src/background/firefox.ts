@@ -3,6 +3,7 @@ import { CorsMonitor } from '../shared/corsMonitor';
 import { ALLOW_ALL_HEADERS_VALUE } from '../shared/dnrRules';
 import { listenForPauseEnd, syncPauseAlarm } from '../shared/pause';
 import { showOverridesState } from '../shared/toolbarIcon';
+import { openWelcomeOnInstall } from '../shared/welcome';
 import { ExtensionSettings, getAllowedMethodsForRequest, isCorsEnabledForRequest, isCredentialsSupported } from '../shared/settings';
 
 interface FirefoxHeader {
@@ -35,9 +36,10 @@ const corsMonitor = new CorsMonitor(() => currentSettings, (tabId, text) => {
 });
 void browser.browserAction.setBadgeBackgroundColor({ color: '#b34b4b' });
 
-browser.runtime.onInstalled.addListener(() => {
+browser.runtime.onInstalled.addListener((details) => {
   void refreshSettings();
   void clearPersistedRequestLog();
+  openWelcomeOnInstall(details.reason);
 });
 
 browser.runtime.onStartup.addListener(() => {

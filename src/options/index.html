@@ -18,6 +18,17 @@
         <p class="subtitle">Choose which pages get relaxed CORS headers, and how responses are relaxed.</p>
       </header>
 
+      <section id="welcome" class="setting-section welcome" aria-labelledby="welcome-title" hidden>
+        <h2 id="welcome-title">Welcome to CORS Unblocker</h2>
+        <ol class="welcome__steps">
+          <li><strong>Open the page you're developing</strong>, such as localhost:3000, and click the CORS Unblocker icon.</li>
+          <li><strong>Click Trust.</strong> Calls that page makes to other sites get relaxed CORS headers. Other websites are not affected.</li>
+          <li><strong>A red number on the icon</strong> means calls on that tab were blocked by CORS. Open the popup and click Fix.</li>
+        </ol>
+        <p class="section-help">Tip: pin the icon to your toolbar from the extensions menu so its state is always visible. Overrides start switched off.</p>
+        <button id="dismiss-welcome" type="button">Got it</button>
+      </section>
+
       <section id="rules-section" class="setting-section" aria-labelledby="rules-title">
         <div class="section-heading"><div><h2 id="rules-title">Rules</h2><p class="section-help">Trust the pages you're developing: calls they make get relaxed CORS headers. Skip rules keep a URL's original headers.</p></div><p id="count" class="summary" aria-live="polite"></p></div>
         <form id="form" class="editor">

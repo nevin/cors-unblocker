@@ -8,6 +8,7 @@ import {
 } from '../shared/browserApi';
 import { DEFAULT_ALLOW_METHODS, CorsMode, ExtensionSettings, exportRules, formatPatternForPeople, getTrustPatternForRequest, importRules, isCredentialsSupported, normalizeMethodOverridePattern, normalizePattern } from '../shared/settings';
 import { applyTheme } from '../shared/theme';
+import { WELCOME_HASH } from '../shared/welcome';
 
 const form = document.querySelector<HTMLFormElement>('#form');
 const input = document.querySelector<HTMLInputElement>('#pattern');
@@ -39,6 +40,8 @@ const importPreview = document.querySelector<HTMLElement>('#import-preview');
 const importPreviewSummary = document.querySelector<HTMLElement>('#import-preview-summary');
 const confirmImportRulesButton = document.querySelector<HTMLButtonElement>('#confirm-import-rules');
 const cancelImportRulesButton = document.querySelector<HTMLButtonElement>('#cancel-import-rules');
+const welcomeSection = document.querySelector<HTMLElement>('#welcome');
+const dismissWelcomeButton = document.querySelector<HTMLButtonElement>('#dismiss-welcome');
 
 let settings: ExtensionSettings;
 let discoveredRequests: DiscoveredRequest[] = [];
@@ -49,6 +52,7 @@ const settingsController = new SettingsController();
 void initialize();
 
 async function initialize(): Promise<void> {
+  showWelcomeIfRequested();
   try {
     const [loadedSettings, loadedRequests] = await Promise.all([
       settingsController.initialize(),
@@ -238,6 +242,20 @@ function editPattern(pattern: string, kind: 'enabled' | 'skip' = 'enabled'): voi
   }
   input.focus();
   setMessage('Loaded into the form above. Change it and press Add; then remove the old one.', false);
+}
+
+// Shown when the background opens Settings after a fresh install; dismissing it removes the marker
+// from the address, so a reload does not bring it back.
+function showWelcomeIfRequested(): void {
+  if (!welcomeSection || location.hash !== WELCOME_HASH) {
+    return;
+  }
+  welcomeSection.hidden = false;
+  dismissWelcomeButton?.addEventListener('click', () => {
+    welcomeSection.hidden = true;
+    history.replaceState(null, '', location.pathname);
+    input?.focus();
+  });
 }
 
 function render(): void {

@@ -448,3 +448,16 @@ describe('toolbar icon in a real browser', () => {
   });
 });
 
+describe('first run in a real browser', () => {
+  it('opens Settings with a welcome card on install, which Got it dismisses', async () => {
+    await waitFor(async () => context.pages().some((page) => page.url().endsWith('/options/index.html#welcome')), 'the welcome tab');
+    const page = context.pages().find((candidate) => candidate.url().endsWith('/options/index.html#welcome'));
+    await page.waitForSelector('#welcome:not([hidden])');
+    assert.match(await page.textContent('#welcome'), /Click Trust/);
+
+    await page.click('#dismiss-welcome');
+    assert.equal(await page.isHidden('#welcome'), true);
+    assert.equal(new URL(page.url()).hash, '');
+  });
+});
+

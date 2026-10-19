@@ -3,6 +3,7 @@ import { CorsMonitor } from '../shared/corsMonitor';
 import { buildDynamicRules } from '../shared/dnrRules';
 import { listenForPauseEnd, syncPauseAlarm } from '../shared/pause';
 import { showOverridesState } from '../shared/toolbarIcon';
+import { openWelcomeOnInstall } from '../shared/welcome';
 import { ExtensionSettings } from '../shared/settings';
 
 let ruleUpdateQueue = Promise.resolve();
@@ -15,9 +16,10 @@ const corsMonitor = new CorsMonitor(() => currentSettings, (tabId, text) => {
 });
 void chrome.action.setBadgeBackgroundColor({ color: '#b34b4b' });
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
   void refreshRules();
   void clearPersistedRequestLog();
+  openWelcomeOnInstall(details.reason);
 });
 
 chrome.runtime.onStartup.addListener(() => {

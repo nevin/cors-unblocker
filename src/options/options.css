@@ -627,3 +627,34 @@ input {
   }
 }
 
+.welcome {
+  display: grid;
+  gap: 12px;
+  border-color: var(--accent);
+  border-left-width: 4px;
+}
+
+.welcome[hidden] {
+  display: none;
+}
+
+.welcome h2 {
+  margin: 0;
+}
+
+.welcome__steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 22px;
+  line-height: 1.5;
+}
+
+.welcome button {
+  width: fit-content;
+}
+
+
+.rule-rows > .empty {
+  grid-column: 1 / -1;
+}
