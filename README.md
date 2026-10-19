@@ -6,6 +6,21 @@ A browser extension for selectively relaxing CORS response headers during local 
 
 This is a development tool. Keep it disabled when you are not actively debugging local development requests. Prefer whitelist mode over global mode.
 
+## Finding blocked calls
+
+You don't have to wait for a console error. The extension checks every cross-origin API call (fetch and XHR) the way the browser will, using the server's own response headers, even while overrides are off:
+
+- A red count on the toolbar icon shows how many calls on the current tab are blocked by CORS.
+- The popup lists them by API with the reason, for example a missing `Access-Control-Allow-Origin`, a server that allows a different origin, or a preflight that rejects your method or headers.
+- **Fix blocked calls** applies exactly the changes needed (turn on overrides, trust the page, allow a method or headers) and tells you what it will change first. Then reload the page to retry.
+- Problems no header can fix, such as a preflight answered with 404 or 405, are explained instead of hidden.
+
+Only failing cross-origin calls are kept, without query strings, per tab, for the browser session. They are cleared when the tab navigates or closes, and never leave your browser. Turn detection off in Options under **Blocked-call detection**.
+
+## Respecting server CORS headers
+
+Some calls on a page need help and some already work, for example an API that handles CORS itself and uses cookies. By default the extension leaves any response that already has `Access-Control-Allow-Origin` untouched, so trusting a page never breaks the calls that were working. If a server sends the wrong origin, the popup offers to override server headers; that setting applies to every trusted page.
+
 ## How rules work
 
 A rule trusts the pages it matches. Requests made **by** a trusted page get relaxed CORS headers, whatever API they call:

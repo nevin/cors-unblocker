@@ -21,6 +21,8 @@ const selectAllMethodsButton = document.querySelector<HTMLButtonElement>('#selec
 const selectDefaultMethodsButton = document.querySelector<HTMLButtonElement>('#select-default-methods');
 const allowAllHeadersInput = document.querySelector<HTMLInputElement>('#allow-all-headers');
 const allowCredentialsInput = document.querySelector<HTMLInputElement>('#allow-credentials');
+const respectServerCorsInput = document.querySelector<HTMLInputElement>('#respect-server-cors');
+const detectCorsIssuesInput = document.querySelector<HTMLInputElement>('#detect-cors-issues');
 const credentialsHint = document.querySelector<HTMLElement>('#credentials-hint');
 const headersWarning = document.querySelector<HTMLElement>('#headers-warning');
 const themeSelect = document.querySelector<HTMLSelectElement>('#theme');
@@ -92,6 +94,12 @@ async function initialize(): Promise<void> {
 
   allowAllHeadersInput?.addEventListener('change', () => {
     void updateSettings({ allowAllHeaders: allowAllHeadersInput.checked });
+  });
+  respectServerCorsInput?.addEventListener('change', () => {
+    void updateSettings({ respectServerCors: respectServerCorsInput.checked });
+  });
+  detectCorsIssuesInput?.addEventListener('change', () => {
+    void updateSettings({ detectCorsIssues: detectCorsIssuesInput.checked });
   });
   allowCredentialsInput?.addEventListener('change', () => {
     void updateSettings({ allowCredentials: allowCredentialsInput.checked });
@@ -245,6 +253,12 @@ function render(): void {
   });
   if (allowAllHeadersInput) {
     allowAllHeadersInput.checked = settings.allowAllHeaders;
+  }
+  if (respectServerCorsInput) {
+    respectServerCorsInput.checked = settings.respectServerCors;
+  }
+  if (detectCorsIssuesInput) {
+    detectCorsIssuesInput.checked = settings.detectCorsIssues;
   }
   if (allowCredentialsInput) {
     allowCredentialsInput.checked = settings.allowCredentials;

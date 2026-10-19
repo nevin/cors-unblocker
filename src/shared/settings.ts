@@ -17,6 +17,7 @@ export interface RulesExport {
   allowAllHeaders: boolean;
   allowCredentials: boolean;
   anyOriginTargets?: string[];
+  respectServerCors?: boolean;
 }
 
 export interface ExtensionSettings {
@@ -32,6 +33,11 @@ export interface ExtensionSettings {
   domainRules: DomainRule[];
   // Rule patterns whose responses are relaxed for requests from any site, not just from trusted pages.
   anyOriginTargets: string[];
+  // Leave responses alone when the server already sent Access-Control-Allow-Origin, so APIs that
+  // handle CORS themselves (including credentialed ones) keep working on a trusted page.
+  respectServerCors: boolean;
+  // Watch cross-origin API calls for CORS failures and report them per tab, even while overrides are off.
+  detectCorsIssues: boolean;
 }
 
 export type EffectiveCorsRule =
@@ -56,6 +62,8 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   ,allowCredentials: false
   ,domainRules: []
   ,anyOriginTargets: []
+  ,respectServerCors: true
+  ,detectCorsIssues: true
 };
 
 export const SETTINGS_KEY = 'corsDevControlSettings';
@@ -155,7 +163,8 @@ export function exportRules(settings: ExtensionSettings): string {
     methodOverrides: settings.methodOverrides,
     allowAllHeaders: settings.allowAllHeaders,
     allowCredentials: settings.allowCredentials,
-    anyOriginTargets: settings.anyOriginTargets
+    anyOriginTargets: settings.anyOriginTargets,
+    respectServerCors: settings.respectServerCors
   };
 
   return `${JSON.stringify(rules, null, 2)}\n`;
@@ -176,7 +185,8 @@ export function importRules(value: string): Partial<ExtensionSettings> {
     methodOverrides: rules.methodOverrides && typeof rules.methodOverrides === 'object' ? rules.methodOverrides : {},
     allowAllHeaders: rules.allowAllHeaders === true,
     allowCredentials: rules.allowCredentials === true,
-    anyOriginTargets: Array.isArray(rules.anyOriginTargets) ? rules.anyOriginTargets : []
+    anyOriginTargets: Array.isArray(rules.anyOriginTargets) ? rules.anyOriginTargets : [],
+    respectServerCors: rules.respectServerCors !== false
   };
 }
 
@@ -216,6 +226,8 @@ export function mergeSettings(value: Partial<ExtensionSettings> | undefined): Ex
     ,allowCredentials: typeof value?.allowCredentials === 'boolean' ? value.allowCredentials : DEFAULT_SETTINGS.allowCredentials
     ,domainRules: normalizeDomainRules(value?.domainRules)
     ,anyOriginTargets: normalizeAnyOriginTargets(value)
+    ,respectServerCors: typeof value?.respectServerCors === 'boolean' ? value.respectServerCors : DEFAULT_SETTINGS.respectServerCors
+    ,detectCorsIssues: typeof value?.detectCorsIssues === 'boolean' ? value.detectCorsIssues : DEFAULT_SETTINGS.detectCorsIssues
   };
 }
 

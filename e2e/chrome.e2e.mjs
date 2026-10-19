@@ -5,12 +5,14 @@ import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { applyCorsFixes, planIssueFix } from '../dist-test/shared/corsDiagnosis.js';
 import { buildDynamicRules } from '../dist-test/shared/dnrRules.js';
 import { mergeSettings } from '../dist-test/shared/settings.js';
 import { startTestServer } from './server.mjs';
 
 const extensionPath = fileURLToPath(new URL('../dist/chrome', import.meta.url));
 const REQUEST_LOG_KEY = 'corsDevControlRequestLog';
+const CORS_ISSUES_KEY = 'corsDevControlCorsIssues';
 
 let server;
 let context;
@@ -80,6 +82,24 @@ let pathCounter = 0;
 function freshPath(name) {
   pathCounter += 1;
   return `/${name}-${pathCounter}`;
+}
+
+// Like fetchFrom, but keeps the tab open so its CORS issues and badge can be inspected.
+async function openPage(pageOrigin) {
+  const page = await context.newPage();
+  await page.goto(`${pageOrigin}/`);
+  const tabId = await worker.evaluate(async (url) => (await chrome.tabs.query({ url: `${url}/*` })).at(-1)?.id, pageOrigin);
+  const fetchHere = (url, init = {}) => page.evaluate(async ({ url, init }) => {
+    try {
+      const response = await fetch(url, init);
+      return { readable: true, status: response.status };
+    } catch (error) {
+      return { readable: false, error: String(error) };
+    }
+  }, { url, init });
+  const issues = async () => (await worker.evaluate(async (key) => (await chrome.storage.session.get(key))[key] ?? {}, CORS_ISSUES_KEY))[String(tabId)] ?? [];
+  const badge = () => worker.evaluate((tabId) => chrome.action.getBadgeText({ tabId }), tabId);
+  return { page, tabId, fetchHere, issues, badge };
 }
 
 // Loads `pageOrigin` in a tab and fetches `url` from it, reporting whether the page could read the response.
@@ -208,5 +228,101 @@ describe('Chrome extension in a real browser', () => {
     assert.ok(logs.session.some((entry) => entry.url === `${api}${enabledPath}`));
     assert.equal(logs.local, undefined);
     assert.doesNotMatch(JSON.stringify(logs.session), /secret/);
+  });
+});
+
+describe('CORS issue detection in a real browser', () => {
+  it('detects a blocked call while overrides are off, and the suggested fix makes it work', async () => {
+    await configure({ enabled: false });
+    const tab = await openPage(app);
+    const path = freshPath('detect');
+    try {
+      assert.equal((await tab.fetchHere(`${api}${path}?token=secret`)).readable, false);
+      await waitFor(async () => (await tab.issues()).length === 1, 'the blocked call to be detected');
+
+      const [issue] = await tab.issues();
+      assert.equal(issue.url, `${api}${path}`);
+      assert.equal(issue.pageOrigin, app);
+      assert.equal(issue.problem.reason, 'missing-allow-origin');
+      assert.equal(await tab.badge(), '1');
+
+      const settings = mergeSettings({ enabled: false });
+      const plan = planIssueFix(issue, settings);
+      assert.deepEqual(plan.fixes.map((fix) => fix.kind), ['enable', 'trust-page']);
+      await configure({ ...settings, ...applyCorsFixes(settings, plan.fixes) });
+
+      await waitFor(async () => (await tab.badge()) === '', 'the badge to clear after the fix');
+      assert.equal((await tab.fetchHere(`${api}${path}`)).readable, true);
+    } finally {
+      await tab.page.close();
+    }
+  });
+
+  it('reports a failing preflight status as something headers cannot fix', async () => {
+    await configure({ enabled: true, whitelist: [app], allowAllHeaders: true });
+    const tab = await openPage(app);
+    try {
+      const put = { method: 'PUT', headers: { 'content-type': 'application/json' }, body: '{}' };
+      assert.equal((await tab.fetchHere(`${api}/preflight-404${freshPath('x')}`, put)).readable, false);
+      await waitFor(async () => (await tab.issues()).length === 1, 'the failed preflight to be detected');
+
+      const [issue] = await tab.issues();
+      assert.deepEqual(issue.problem, { reason: 'preflight-status', detail: '404' });
+      assert.equal(issue.preflight, true);
+      assert.equal(issue.method, 'PUT');
+      assert.equal(await tab.badge(), '1');
+    } finally {
+      await tab.page.close();
+    }
+  });
+
+  it('records nothing for calls that work, and clears issues when the tab navigates', async () => {
+    await configure({ enabled: false });
+    const tab = await openPage(app);
+    try {
+      assert.equal((await tab.fetchHere(`${api}/cors-ok${freshPath('ok')}`, { credentials: 'include' })).readable, true);
+      assert.equal((await tab.fetchHere(`${api}${freshPath('blocked')}`)).readable, false);
+      await waitFor(async () => (await tab.issues()).length === 1, 'only the blocked call to be detected');
+
+      await tab.page.goto(`${app}/`);
+      await waitFor(async () => (await tab.issues()).length === 0 && (await tab.badge()) === '', 'navigation to clear the issues');
+    } finally {
+      await tab.page.close();
+    }
+  });
+
+  it('does not record anything when detection is turned off', async () => {
+    await configure({ enabled: false, detectCorsIssues: false });
+    const tab = await openPage(app);
+    try {
+      assert.equal((await tab.fetchHere(`${api}${freshPath('quiet')}`)).readable, false);
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      assert.deepEqual(await tab.issues(), []);
+      assert.equal(await tab.badge(), '');
+    } finally {
+      await tab.page.close();
+    }
+  });
+});
+
+describe('respecting server CORS headers in a real browser', () => {
+  it('keeps a credentialed API that handles CORS itself working on a trusted page', async () => {
+    const credentialed = { credentials: 'include' };
+
+    await configure({ enabled: true, whitelist: [app] });
+    const kept = await fetchFrom(app, `${api}/cors-ok${freshPath('respect')}`, credentialed);
+    assert.equal(kept.readable, true, kept.error);
+    assert.equal((await fetchFrom(app, `${api}${freshPath('plain')}`)).readable, true);
+
+    // Without respect mode, the extension's Allow-Origin: * replaces the server's echo and breaks credentials.
+    await configure({ enabled: true, whitelist: [app], respectServerCors: false });
+    assert.equal((await fetchFrom(app, `${api}/cors-ok${freshPath('override')}`, credentialed)).readable, false);
+  });
+
+  it('lets "allow all headers" cover the Authorization header', async () => {
+    await configure({ enabled: true, whitelist: [app], allowAllHeaders: true });
+
+    const result = await fetchFrom(app, `${api}${freshPath('auth')}`, { headers: { authorization: 'Bearer test-token' } });
+    assert.equal(result.readable, true, result.error);
   });
 });

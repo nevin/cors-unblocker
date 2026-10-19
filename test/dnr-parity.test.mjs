@@ -6,9 +6,12 @@ import { getAllowedMethodsForRequest, isCorsEnabledForRequest, mergeSettings } f
 // Minimal model of how Chrome applies this extension's dynamic rules to one response:
 // a matching 'allow' rule cancels lower-priority modifyHeaders rules, and for each header the
 // highest-priority 'set' wins.
-function simulateChrome(rules, url, initiatorOrigin) {
+function simulateChrome(rules, url, initiatorOrigin, serverHeaders = {}) {
   const initiatorHost = initiatorOrigin ? new URL(initiatorOrigin).hostname : null;
   const matches = rules.filter(({ condition }) => {
+    if ((condition.excludedResponseHeaders ?? []).some(({ header }) => header in serverHeaders)) {
+      return false;
+    }
     if (condition.urlFilter === '|http' && !url.startsWith('http')) {
       return false;
     }
@@ -22,13 +25,15 @@ function simulateChrome(rules, url, initiatorOrigin) {
   });
 
   const allowPriority = Math.max(-Infinity, ...matches.filter((rule) => rule.action.type === 'allow').map((rule) => rule.priority));
-  const headers = new Map();
+  const headers = new Map(Object.entries(serverHeaders));
+  const modified = new Set();
   matches
     .filter((rule) => rule.action.type === 'modifyHeaders' && rule.priority > allowPriority)
     .sort((left, right) => right.priority - left.priority)
     .forEach((rule) => rule.action.responseHeaders.forEach(({ header, value }) => {
-      if (!headers.has(header)) {
+      if (!modified.has(header)) {
         headers.set(header, value);
+        modified.add(header);
       }
     }));
   return headers;
@@ -162,5 +167,16 @@ describe('known Chrome limitations', () => {
     assert.equal(sharedOutcome(settings, 'https://api.example.dev/data', 'https://other.dev').relaxed, true);
     assert.equal(chromeOutcome(settings, 'https://api.example.dev/data', 'https://other.dev').relaxed, false);
     assert.equal(chromeOutcome(settings, 'https://api.other.dev/data', 'https://app.example.dev').relaxed, true);
+  });
+
+  it('leaves responses that already allow CORS untouched unless told to override them', () => {
+    const serverHeaders = { 'access-control-allow-origin': 'https://prod.example.com', 'access-control-allow-credentials': 'true' };
+    const respect = mergeSettings({ enabled: true, whitelist: ['http://localhost:3000'] });
+    const override = mergeSettings({ ...respect, respectServerCors: false });
+
+    assert.equal(simulateChrome(buildDynamicRules(respect), 'https://api.dev/data', 'http://localhost:3000', serverHeaders).get('access-control-allow-origin'), 'https://prod.example.com');
+    assert.equal(simulateChrome(buildDynamicRules(override), 'https://api.dev/data', 'http://localhost:3000', serverHeaders).get('access-control-allow-origin'), '*');
+    assert.equal(simulateChrome(buildDynamicRules(respect), 'https://api.dev/data', 'http://localhost:3000').get('access-control-allow-origin'), '*');
+    assert.ok(buildDynamicRules(respect).filter((rule) => rule.action.type === 'allow').every((rule) => !rule.condition.excludedResponseHeaders));
   });
 });

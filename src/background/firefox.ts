@@ -1,4 +1,6 @@
 import { clearPersistedRequestLog, loadSettings, onSettingsChanged, recordDiscoveredRequest } from '../shared/browserApi';
+import { CorsMonitor } from '../shared/corsMonitor';
+import { ALLOW_ALL_HEADERS_VALUE } from '../shared/dnrRules';
 import { ExtensionSettings, getAllowedMethodsForRequest, isCorsEnabledForRequest, isCredentialsSupported } from '../shared/settings';
 
 interface FirefoxHeader {
@@ -7,6 +9,11 @@ interface FirefoxHeader {
 }
 
 interface HeadersReceivedDetails {
+  requestId: string;
+  tabId: number;
+  method: string;
+  statusCode: number;
+  type: string;
   url: string;
   originUrl?: string | undefined;
   documentUrl?: string | undefined;
@@ -19,6 +26,13 @@ interface BlockingResponse {
 
 let currentSettings: ExtensionSettings | null = null;
 
+const corsMonitor = new CorsMonitor(() => currentSettings, (tabId, text) => {
+  // The tab may already be gone; a stale badge update is harmless.
+  // Firefox returns a promise here, though the shared typings declare void.
+  Promise.resolve(browser.browserAction.setBadgeText({ tabId, text }) as unknown as Promise<void>).catch(() => undefined);
+});
+void browser.browserAction.setBadgeBackgroundColor({ color: '#b34b4b' });
+
 browser.runtime.onInstalled.addListener(() => {
   void refreshSettings();
   void clearPersistedRequestLog();
@@ -30,6 +44,9 @@ browser.runtime.onStartup.addListener(() => {
 
 browser.webRequest.onBeforeRequest.addListener(
   (details) => {
+    if (details.type === 'main_frame') {
+      void corsMonitor.clearTab(details.tabId);
+    }
     if (!currentSettings?.enabled) {
       return;
     }
@@ -43,8 +60,15 @@ browser.webRequest.onBeforeRequest.addListener(
   }
 );
 
+const API_REQUESTS = { urls: ['<all_urls>'], types: ['xmlhttprequest' as const] };
+browser.webRequest.onSendHeaders.addListener((details) => corsMonitor.onSendHeaders(details), API_REQUESTS, ['requestHeaders']);
+browser.webRequest.onCompleted.addListener((details) => corsMonitor.onRequestEnded(details.requestId), API_REQUESTS);
+browser.webRequest.onErrorOccurred.addListener((details) => corsMonitor.onRequestEnded(details.requestId), API_REQUESTS);
+browser.tabs.onRemoved.addListener((tabId) => void corsMonitor.clearTab(tabId));
+
 onSettingsChanged((settings) => {
   currentSettings = settings;
+  void corsMonitor.refreshBadges();
 });
 
 browser.webRequest.onHeadersReceived.addListener(
@@ -61,8 +85,17 @@ async function refreshSettings(): Promise<void> {
 
 function handleHeadersReceived(details: HeadersReceivedDetails): BlockingResponse {
   const settings = currentSettings;
+  // Diagnose from the server's own headers, before this listener changes them.
+  if (details.type === 'xmlhttprequest') {
+    corsMonitor.onHeadersReceived(details);
+  }
 
   if (!settings || !isCorsEnabledForRequest(details.url, details.originUrl ?? details.documentUrl, settings)) {
+    return {};
+  }
+
+  // Servers that already send Allow-Origin handle CORS themselves; overriding them can break credentialed calls.
+  if (settings.respectServerCors && (details.responseHeaders ?? []).some((header) => header.name.toLowerCase() === 'access-control-allow-origin')) {
     return {};
   }
 
@@ -89,7 +122,7 @@ function upsertCorsHeaders(headers: FirefoxHeader[], allowMethods: string[], all
   );
 
   if (allowAllHeaders) {
-    next.push({ name: 'Access-Control-Allow-Headers', value: '*' });
+    next.push({ name: 'Access-Control-Allow-Headers', value: ALLOW_ALL_HEADERS_VALUE });
   }
 
   if (allowCredentials) {

@@ -69,7 +69,9 @@ describe('SettingsController', () => {
       allowAllHeaders: false,
       allowCredentials: false,
       domainRules: [],
-      anyOriginTargets: []
+      anyOriginTargets: [],
+      respectServerCors: true,
+      detectCorsIssues: true
     });
 
     stored.set('mode', 'global');

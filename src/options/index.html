@@ -47,9 +47,15 @@
       <details class="setting-section advanced-options">
         <summary class="section-summary"><span>Headers &amp; credentials</span></summary>
         <p class="section-help">Advanced response header behavior, separate from the allowed methods above.</p>
-        <label class="header-option"><input id="allow-all-headers" type="checkbox" /> <span><strong>Allow all request headers</strong><small>Sets Access-Control-Allow-Headers to *</small><em id="headers-warning" hidden>Wildcard headers may not work with credentialed requests.</em></span></label>
+        <label class="header-option"><input id="allow-all-headers" type="checkbox" /> <span><strong>Allow all request headers</strong><small>Sets Access-Control-Allow-Headers to *, Authorization</small><em id="headers-warning" hidden>Wildcard headers may not work with credentialed requests.</em></span></label>
         <label class="header-option"><input id="allow-credentials" type="checkbox" /> <span><strong>Allow credentials</strong><small>Sets Allow-Credentials to true and uses the initiator origin.</small><em id="credentials-hint">Use an explicit http(s) origin pattern in Chrome. Reload open tabs after changing this.</em></span></label>
+        <label class="header-option"><input id="respect-server-cors" type="checkbox" /> <span><strong>Respect server CORS headers</strong><small>Leaves a response alone when the server already sends Access-Control-Allow-Origin, so APIs that handle CORS themselves, including credentialed ones, keep working on trusted pages.</small><em>Turn off only if a server sends the wrong origin and you need to override it.</em></span></label>
       </details>
+
+      <section class="setting-section">
+        <h2>Blocked-call detection</h2>
+        <label class="header-option"><input id="detect-cors-issues" type="checkbox" /> <span><strong>Detect calls blocked by CORS</strong><small>Shows a red count on the toolbar icon and lists blocked calls in the popup, with a one-click fix. Works even while overrides are off.</small><em>Only failing cross-origin calls are kept, without query strings, per tab, in memory for this browser session. They are cleared when the tab navigates or closes and never leave your browser.</em></span></label>
+      </section>
 
       <section class="setting-section">
         <div class="section-heading"><div><h2>Appearance</h2><p class="section-help">Choose the theme for every plugin page.</p></div><label class="theme-control" for="theme">Theme

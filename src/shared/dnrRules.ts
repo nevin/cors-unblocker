@@ -13,6 +13,7 @@ export interface DnrCondition {
   regexFilter?: string;
   isUrlFilterCaseSensitive?: boolean;
   initiatorDomains?: string[];
+  excludedResponseHeaders?: Array<{ header: string }>;
   resourceTypes: string[];
 }
 
@@ -34,6 +35,9 @@ const INDIVIDUAL_RULE_PRIORITY_BASE = 3_000;
 // Above every modifyHeaders rule, so a matching skip rule stops all of this extension's header changes.
 const SKIP_RULE_PRIORITY = 10_000;
 
+// Wildcard Allow-Headers never covers Authorization, so it is listed by name.
+export const ALLOW_ALL_HEADERS_VALUE = '*, Authorization';
+
 const RESOURCE_TYPES = ['main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font', 'object', 'xmlhttprequest', 'ping', 'media', 'websocket', 'other'];
 
 export function buildDynamicRules(settings: ExtensionSettings): DnrRule[] {
@@ -51,6 +55,13 @@ export function buildDynamicRules(settings: ExtensionSettings): DnrRule[] {
     .filter(([pattern]) => !activePatternSet.has(pattern))
     .slice(0, MAX_METHOD_OVERRIDE_RULES)
     .forEach(([pattern, methods]) => rules.push(createMethodOverrideRule(pattern, methods)));
+
+  // Responses that already carry Allow-Origin come from servers that handle CORS themselves; leave them alone.
+  if (settings.respectServerCors) {
+    rules.forEach((rule) => {
+      rule.condition.excludedResponseHeaders = [{ header: 'access-control-allow-origin' }];
+    });
+  }
 
   settings.skiplist.slice(0, MAX_SKIP_RULES).forEach((pattern) => rules.push(...createSkipRules(pattern)));
 
@@ -129,7 +140,7 @@ function createResponseHeaders(methods: string[], allowAllHeaders: boolean, allo
   ];
 
   if (allowAllHeaders) {
-    headers.push({ header: 'access-control-allow-headers', operation: 'set', value: '*' });
+    headers.push({ header: 'access-control-allow-headers', operation: 'set', value: ALLOW_ALL_HEADERS_VALUE });
   }
 
   if (allowCredentials) {

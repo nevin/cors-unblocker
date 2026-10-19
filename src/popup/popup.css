@@ -132,6 +132,90 @@ h1 {
   font-weight: 700;
 }
 
+.cors-issues {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.cors-issues[data-state='clear'] {
+  border-color: var(--line);
+}
+
+.cors-issues .eyebrow {
+  margin-bottom: 0;
+}
+
+.cors-issues__summary {
+  margin: 0;
+  font-weight: 800;
+}
+
+.cors-issues[data-state='clear'] .cors-issues__summary {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cors-issues[data-state='blocked'] .cors-issues__summary {
+  color: var(--danger);
+}
+
+.cors-issues__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cors-issues__list li {
+  display: grid;
+  gap: 2px;
+  border-left: 3px solid var(--line);
+  padding: 2px 0 2px 8px;
+  font-size: 12px;
+}
+
+.cors-issues__list li[data-state='blocked'],
+.cors-issues__list li[data-state='unfixable'] {
+  border-left-color: var(--danger);
+}
+
+.cors-issues__list li[data-state='fixed'] {
+  border-left-color: var(--accent);
+}
+
+.cors-issues__target {
+  overflow-wrap: anywhere;
+  font-weight: 800;
+}
+
+.cors-issues__list small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.cors-issues__plan {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.cors-issues__actions {
+  display: grid;
+  gap: 6px;
+}
+
+.cors-issues__actions:empty,
+.cors-issues__actions:not(:has(button:not([hidden]))) {
+  display: none;
+}
+
 .warning {
   grid-column: 1 / -1;
   margin: 2px 0 0;

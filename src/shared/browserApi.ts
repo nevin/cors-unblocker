@@ -3,8 +3,8 @@ import { DEFAULT_SETTINGS, ExtensionSettings, SETTINGS_KEY, mergeSettings } from
 type StorageChangeHandler = (settings: ExtensionSettings) => void;
 export type SettingsListener = (settings: ExtensionSettings) => void;
 
-const runtimeApi = globalThis.browser ?? globalThis.chrome;
-const SETTINGS_FIELDS = ['enabled', 'mode', 'whitelist', 'skiplist', 'allowMethods', 'methodOverrides', 'theme', 'allowAllHeaders', 'allowCredentials', 'domainRules', 'anyOriginTargets'] as const;
+export const runtimeApi = globalThis.browser ?? globalThis.chrome;
+const SETTINGS_FIELDS = ['enabled', 'mode', 'whitelist', 'skiplist', 'allowMethods', 'methodOverrides', 'theme', 'allowAllHeaders', 'allowCredentials', 'domainRules', 'anyOriginTargets', 'respectServerCors', 'detectCorsIssues'] as const satisfies ReadonlyArray<keyof ExtensionSettings>;
 
 type StoredSettings = Partial<ExtensionSettings> & {
   [SETTINGS_KEY]?: Partial<ExtensionSettings>;
@@ -12,104 +12,29 @@ type StoredSettings = Partial<ExtensionSettings> & {
 
 export async function loadSettings(): Promise<ExtensionSettings> {
   const stored = await runtimeApi.storage.local.get([SETTINGS_KEY, ...SETTINGS_FIELDS]) as StoredSettings;
-  const legacySettings = stored[SETTINGS_KEY];
-  const fieldSettings: Partial<ExtensionSettings> = {};
-
-  if (stored.enabled !== undefined) {
-    fieldSettings.enabled = stored.enabled;
-  }
-  if (stored.mode !== undefined) {
-    fieldSettings.mode = stored.mode;
-  }
-  if (stored.whitelist !== undefined) {
-    fieldSettings.whitelist = stored.whitelist;
-  }
-  if (stored.skiplist !== undefined) {
-    fieldSettings.skiplist = stored.skiplist;
-  }
-  if (stored.allowMethods !== undefined) {
-    fieldSettings.allowMethods = stored.allowMethods;
-  }
-  if (stored.methodOverrides !== undefined) {
-    fieldSettings.methodOverrides = stored.methodOverrides;
-  }
-  if (stored.theme !== undefined) {
-    fieldSettings.theme = stored.theme;
-  }
-  if (stored.allowAllHeaders !== undefined) {
-    fieldSettings.allowAllHeaders = stored.allowAllHeaders;
-  }
-  if (stored.allowCredentials !== undefined) {
-    fieldSettings.allowCredentials = stored.allowCredentials;
-  }
-  if (stored.domainRules !== undefined) {
-    fieldSettings.domainRules = stored.domainRules;
-  }
-  if (stored.anyOriginTargets !== undefined) {
-    fieldSettings.anyOriginTargets = stored.anyOriginTargets;
-  }
-
-  return mergeSettings({ ...legacySettings, ...fieldSettings });
+  // Individual field keys win over the combined object, which older versions wrote on its own.
+  const fieldSettings = Object.fromEntries(SETTINGS_FIELDS.filter((field) => stored[field] !== undefined).map((field) => [field, stored[field]]));
+  return mergeSettings({ ...stored[SETTINGS_KEY], ...fieldSettings });
 }
 
 export async function saveSettings(settings: ExtensionSettings): Promise<void> {
   const normalized = mergeSettings(settings);
   await runtimeApi.storage.local.set({
     [SETTINGS_KEY]: normalized,
-    enabled: normalized.enabled,
-    mode: normalized.mode,
-    whitelist: normalized.whitelist,
-    skiplist: normalized.skiplist,
-    allowMethods: normalized.allowMethods,
-    methodOverrides: normalized.methodOverrides
-    ,theme: normalized.theme
-    ,allowAllHeaders: normalized.allowAllHeaders
-    ,allowCredentials: normalized.allowCredentials
-    ,domainRules: normalized.domainRules
-    ,anyOriginTargets: normalized.anyOriginTargets
+    ...Object.fromEntries(SETTINGS_FIELDS.map((field) => [field, normalized[field]]))
   });
 }
 
 export async function updateSettings(next: Partial<ExtensionSettings>): Promise<ExtensionSettings> {
   const settings = mergeSettings({ ...(await loadSettings()), ...next });
-  const changedFields: Record<string, unknown> = { [SETTINGS_KEY]: settings };
+  // Rule edits can drop opt-ins for removed patterns, so persist that list whenever rules change.
+  const changed = SETTINGS_FIELDS.filter((field) => next[field] !== undefined
+    || (field === 'anyOriginTargets' && (next.whitelist !== undefined || next.domainRules !== undefined)));
 
-  if (next.enabled !== undefined) {
-    changedFields.enabled = settings.enabled;
-  }
-  if (next.mode !== undefined) {
-    changedFields.mode = settings.mode;
-  }
-  if (next.whitelist !== undefined) {
-    changedFields.whitelist = settings.whitelist;
-  }
-  if (next.skiplist !== undefined) {
-    changedFields.skiplist = settings.skiplist;
-  }
-  if (next.allowMethods !== undefined) {
-    changedFields.allowMethods = settings.allowMethods;
-  }
-  if (next.methodOverrides !== undefined) {
-    changedFields.methodOverrides = settings.methodOverrides;
-  }
-  if (next.theme !== undefined) {
-    changedFields.theme = settings.theme;
-  }
-  if (next.allowAllHeaders !== undefined) {
-    changedFields.allowAllHeaders = settings.allowAllHeaders;
-  }
-  if (next.allowCredentials !== undefined) {
-    changedFields.allowCredentials = settings.allowCredentials;
-  }
-  if (next.domainRules !== undefined) {
-    changedFields.domainRules = settings.domainRules;
-  }
-  // Rule edits can drop opt-ins for removed patterns, so persist the list whenever rules change.
-  if (next.anyOriginTargets !== undefined || next.whitelist !== undefined || next.domainRules !== undefined) {
-    changedFields.anyOriginTargets = settings.anyOriginTargets;
-  }
-
-  await runtimeApi.storage.local.set(changedFields);
+  await runtimeApi.storage.local.set({
+    [SETTINGS_KEY]: settings,
+    ...Object.fromEntries(changed.map((field) => [field, settings[field]]))
+  });
   return settings;
 }
 
