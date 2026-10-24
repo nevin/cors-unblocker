@@ -5,6 +5,9 @@ export function getStatusText(settings: ExtensionSettings): string {
   if (settings.pausedUntil !== null) {
     return `Paused until ${formatTime(settings.pausedUntil)}`;
   }
+  if (settings.policy.overridesOff) {
+    return 'Off · set by your organization';
+  }
   if (!settings.enabled) {
     return 'Off';
   }

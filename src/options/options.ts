@@ -38,6 +38,7 @@ const themeSelect = document.querySelector<HTMLSelectElement>('#theme');
 const enabledInput = document.querySelector<HTMLInputElement>('#enabled');
 const modeInputs = [...document.querySelectorAll<HTMLInputElement>('input[name="mode"]')];
 const settingsStatus = document.querySelector<HTMLElement>('#settings-status');
+const policyNotice = document.querySelector<HTMLElement>('#policy-notice');
 const globalModeWarning = document.querySelector<HTMLElement>('#global-mode-warning');
 const resetButton = document.querySelector<HTMLButtonElement>('#reset');
 const exportRulesButton = document.querySelector<HTMLButtonElement>('#export-rules');
@@ -368,11 +369,13 @@ function render(): void {
   modeInputs.forEach((input) => {
     input.checked = input.value === settings.mode;
   });
+  renderPolicyNotice();
+  lockPolicyControls(false);
   if (settingsStatus) {
     const activeCount = settings.whitelist.length + settings.domainRules.length;
     settingsStatus.textContent = settings.enabled
       ? settings.mode === 'global' ? 'Enabled' : activeCount === 0 ? 'Enabled, but no active rules' : 'Enabled'
-      : 'Disabled';
+      : settings.policy.overridesOff ? 'Disabled by your organization' : 'Disabled';
     settingsStatus.dataset.enabled = String(settings.enabled);
     settingsStatus.dataset.warning = String(settings.enabled && activeCount === 0 && settings.mode !== 'global');
   }
@@ -656,7 +659,8 @@ function createRuleRow(row: RuleRow): HTMLLIElement {
   const actions = document.createElement('span');
   const anyOrigin = settings.anyOriginTargets.includes(pattern);
   const customMethods = settings.methodOverrides[pattern];
-  const hasOptions = kind !== 'skip';
+  const setByPolicy = kind === 'enabled' && settings.policy.trustedPages.includes(pattern);
+  const hasOptions = kind !== 'skip' && !setByPolicy;
 
   item.className = 'rule-line';
   item.dataset.kind = kind;
@@ -678,9 +682,16 @@ function createRuleRow(row: RuleRow): HTMLLIElement {
   if (customMethods && hasOptions) {
     appendChip(chips, customMethods.join(', '));
   }
+  if (setByPolicy) {
+    appendChip(chips, 'Set by your organization');
+  }
   main.append(name, chips);
 
   actions.className = 'rule-line__actions';
+  if (setByPolicy) {
+    item.append(main, actions);
+    return item;
+  }
   if (kind !== 'domain') {
     actions.append(createRowButton('Edit', `Edit ${formatPatternForPeople(pattern)}`, () => {
       editing = { key, pattern, from: from ?? '' };
@@ -1007,6 +1018,31 @@ function setFormError(text: string): void {
   }
 }
 
+// What the organization enforces, in one sentence at the top of Settings.
+function renderPolicyNotice(): void {
+  if (!policyNotice) {
+    return;
+  }
+  const { overridesOff, trustedPages, everyWebsiteBlocked } = settings.policy;
+  const parts = [
+    ...(overridesOff ? ['keeps CORS overrides off'] : []),
+    ...(trustedPages.length > 0 ? [`trusts ${trustedPages.length === 1 ? '1 page' : `${trustedPages.length} pages`} for you`] : []),
+    ...(everyWebsiteBlocked ? ['doesn\u2019t allow "Every website"'] : [])
+  ];
+  policyNotice.hidden = parts.length === 0;
+  policyNotice.textContent = parts.length === 0 ? '' : `Managed by your organization: it ${parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0]}.`;
+}
+
+// Controls the policy decides stay disabled, busy or not.
+function lockPolicyControls(isBusy: boolean): void {
+  if (enabledInput) {
+    enabledInput.disabled = isBusy || settings.policy.overridesOff;
+  }
+  modeInputs.forEach((input) => {
+    input.disabled = isBusy || (input.value === 'global' && settings.policy.everyWebsiteBlocked);
+  });
+}
+
 function setBusy(isBusy: boolean): void {
   form?.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button').forEach((control) => {
     control.disabled = isBusy;
@@ -1033,9 +1069,8 @@ function setBusy(isBusy: boolean): void {
   if (themeSelect) {
     themeSelect.disabled = isBusy;
   }
-  [enabledInput, resetButton, ...modeInputs].forEach((control) => {
-    if (control) {
-      control.disabled = isBusy;
-    }
-  });
+  if (resetButton) {
+    resetButton.disabled = isBusy;
+  }
+  lockPolicyControls(isBusy);
 }

@@ -354,6 +354,7 @@ function renderRuleItem(target: HTMLUListElement, entry: RuleEntry): void {
   const actions = document.createElement('span');
   const controls = document.createElement('span');
   const override = settings.methodOverrides[pattern];
+  const setByPolicy = entry.kind === 'url' && entry.list === 'active' && settings.policy.trustedPages.includes(pattern);
 
   code.textContent = pattern;
   listStatus.textContent = entry.list === 'active' ? 'Active' : 'Skipped';
@@ -361,6 +362,9 @@ function renderRuleItem(target: HTMLUListElement, entry: RuleEntry): void {
   listStatus.dataset.state = entry.list;
   meta.className = 'rule-meta';
   appendRuleBadge(meta, getRuleSourceLabel(entry));
+  if (setByPolicy) {
+    appendRuleBadge(meta, 'Set by your organization', 'custom');
+  }
   if (entry.kind === 'domain' && entry.domainType) {
     appendRuleBadge(meta, entry.domainType.replace('_', '-'));
   }
@@ -372,12 +376,14 @@ function renderRuleItem(target: HTMLUListElement, entry: RuleEntry): void {
   }
   appendRuleBadge(meta, override ? 'Custom methods' : 'Default methods', override ? 'custom' : undefined);
   meta.append(document.createTextNode((override ?? settings.allowMethods).join(', ')));
-  if (entry.list === 'active' && pattern !== '<all_urls>') {
+  if (entry.list === 'active' && pattern !== '<all_urls>' && !setByPolicy) {
     meta.append(createAnyOriginToggle(pattern, anyOrigin));
   }
   item.className = 'rule-item';
   controls.className = 'rule-controls';
-  if (entry.kind === 'url' && pattern !== '<all_urls>') {
+  if (setByPolicy) {
+    // Pages the organization trusts can't be edited, moved or removed here.
+  } else if (entry.kind === 'url' && pattern !== '<all_urls>') {
       const editButton = document.createElement('button');
       const removeButton = document.createElement('button');
       const moveButton = document.createElement('button');
@@ -864,6 +870,7 @@ function createCorsBlockedItem({ issue, state, fixes }: PlannedCorsIssue): HTMLL
   fixText.className = 'cors-blocked__fix';
   fixText.textContent = state === 'unfixable'
     ? 'Fix this on the server: the extension cannot change status codes.'
+    : state === 'managed' ? 'Your organization keeps CORS overrides off. Fix this on the server, or ask your administrator.'
     : fixes.length > 0 ? `Fix: ${fixes.map(describeCorsFix).join('; ')}` : '';
   actions.className = 'cors-blocked__row-actions';
 
@@ -917,6 +924,10 @@ function getLinkStatus(url: string, initiator: string | undefined): { text: stri
 
 async function addCallRule(callRule: CallRule): Promise<void> {
   await updateSettings({ enabled: true, callRules: [...settings.callRules, callRule] });
+  if (settings.policy.overridesOff) {
+    showNotice('Saved, but your organization keeps CORS overrides off, so the call stays blocked.', true);
+    return;
+  }
   showNotice(`${formatPatternForPeople(callRule.target)} is unblocked for ${formatPatternForPeople(callRule.from)}; its other calls are unchanged. Reload the page to retry.`, false);
 }
 
@@ -957,6 +968,8 @@ function render(): void {
 
 function syncSettingsControls(): void {
   enabledInput!.checked = settings.enabled;
+  enabledInput!.disabled = settings.policy.overridesOff;
+  enabledInput!.title = settings.policy.overridesOff ? 'Your organization keeps CORS overrides off.' : '';
   if (powerLabel) {
     powerLabel.textContent = settings.enabled ? 'On' : 'Off';
   }
@@ -979,8 +992,9 @@ function renderCoverage(): void {
   renderEffectiveRule();
   renderEffectiveMethods(covered);
   const inspectedPageSkipped = Boolean(inspectedUrl && isCorsSkippedForRequest(inspectedUrl, inspectedUrl, settings));
-  allowPageButton!.hidden = !inspectedPattern || covered;
-  allowPageButton!.disabled = !inspectedPattern || covered;
+  // Trusting a page can't help while the organization keeps overrides off.
+  allowPageButton!.hidden = !inspectedPattern || covered || settings.policy.overridesOff;
+  allowPageButton!.disabled = !inspectedPattern || covered || settings.policy.overridesOff;
   allowPageButton!.textContent = inspectedPattern ? `Trust ${formatPatternForPeople(inspectedPattern)}` : 'Trust this page';
   allowPageButton!.title = inspectedPageSkipped ? 'Your skip rules exclude this page; trusting it removes the matching skip rule.' : '';
 }

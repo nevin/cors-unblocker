@@ -183,6 +183,21 @@ details.setting-section[open] > .section-summary {
   padding: 0;
 }
 
+.policy-notice {
+  margin: 0 0 16px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.policy-notice[hidden] {
+  display: none;
+}
+
 .global-mode-warning {
   display: flex;
   align-items: center;

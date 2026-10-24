@@ -53,7 +53,22 @@ export interface ExtensionSettings {
   pausedUntil: number | null;
   // Individually unblocked calls: one API URL pattern, from one page.
   callRules: CallRule[];
+  // What the organization's browser policy enforces. Never stored: loadSettings() fills it in from
+  // managed storage on every load, and the stored settings stay the user's own.
+  policy: AdminPolicy;
 }
+
+// Settings an IT administrator enforces through browser policy (see docs/enterprise-policy.md).
+export interface AdminPolicy {
+  // Overrides stay off and cannot be switched on. Detection of blocked calls keeps working.
+  overridesOff: boolean;
+  // Pages trusted for everyone, on top of the user's own; they cannot be edited or removed.
+  trustedPages: string[];
+  // "Every website" mode is unavailable; only trusted pages and unblocked calls get relaxed CORS.
+  everyWebsiteBlocked: boolean;
+}
+
+export const NO_POLICY: AdminPolicy = { overridesOff: false, trustedPages: [], everyWebsiteBlocked: false };
 
 export type EffectiveCorsRule =
   | { state: 'active'; source: 'global'; pattern: '<all_urls>' }
@@ -83,6 +98,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   ,exposeAllHeaders: true
   ,pausedUntil: null
   ,callRules: []
+  ,policy: NO_POLICY
 };
 
 export const SETTINGS_KEY = 'corsDevControlSettings';
@@ -255,7 +271,54 @@ export function mergeSettings(value: Partial<ExtensionSettings> | undefined): Ex
     // Switching on ends any pause.
     ,pausedUntil: value?.enabled !== true && typeof value?.pausedUntil === 'number' && value.pausedUntil > 0 ? value.pausedUntil : null
     ,callRules: normalizeCallRules(value?.callRules)
+    ,policy: normalizeAdminPolicy(value?.policy)
   };
+}
+
+export function normalizeAdminPolicy(value: Partial<AdminPolicy> | undefined): AdminPolicy {
+  if (!value || typeof value !== 'object') {
+    return NO_POLICY;
+  }
+  return {
+    overridesOff: value.overridesOff === true,
+    trustedPages: Array.isArray(value.trustedPages) ? normalizeWhitelistPatterns(value.trustedPages.filter((page): page is string => typeof page === 'string')) : [],
+    everyWebsiteBlocked: value.everyWebsiteBlocked === true
+  };
+}
+
+// Managed storage keys, as administrators write them (policy-schema.json describes them).
+export function policyFromManagedStorage(managed: Record<string, unknown>): AdminPolicy {
+  return normalizeAdminPolicy({
+    overridesOff: managed.disableOverrides === true,
+    trustedPages: Array.isArray(managed.trustedPages) ? managed.trustedPages as string[] : [],
+    everyWebsiteBlocked: managed.blockEveryWebsiteMode === true
+  });
+}
+
+export function hasAdminPolicy(policy: AdminPolicy): boolean {
+  return policy.overridesOff || policy.everyWebsiteBlocked || policy.trustedPages.length > 0;
+}
+
+// The settings in effect: the user's own, with the organization's policy enforced on top.
+export function applyAdminPolicy(settings: ExtensionSettings, policy: AdminPolicy): ExtensionSettings {
+  return mergeSettings({
+    ...settings,
+    ...(policy.overridesOff ? { enabled: false, pausedUntil: null } : {}),
+    ...(policy.everyWebsiteBlocked ? { mode: 'whitelist' as const } : {}),
+    whitelist: [...policy.trustedPages, ...settings.whitelist],
+    policy
+  });
+}
+
+// The user's own part of a settings change: the policy is never stored, and pages the policy trusts
+// stay out of the user's list, so they disappear when the administrator removes them.
+export function withoutAdminPolicy(next: Partial<ExtensionSettings>, policy: AdminPolicy): Partial<ExtensionSettings> {
+  const { policy: _ignored, ...own } = next;
+  if (own.whitelist && policy.trustedPages.length > 0) {
+    const managed = new Set(policy.trustedPages);
+    own.whitelist = own.whitelist.filter((pattern) => !managed.has(normalizePattern(pattern) ?? pattern));
+  }
+  return own;
 }
 
 // Keeps only opt-ins for rules that still exist, so removing or renaming a rule drops its opt-in.

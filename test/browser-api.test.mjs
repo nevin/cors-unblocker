@@ -5,6 +5,8 @@ const stored = new Map();
 const sessionStored = new Map();
 const listeners = [];
 const setCalls = [];
+// The organization's policy. null means none: Firefox then rejects managed reads.
+let managedPolicy = null;
 
 const storage = {
   local: {
@@ -35,6 +37,14 @@ const storage = {
         Object.fromEntries(Object.entries(values).map(([key, value]) => [key, { newValue: value }])),
         'session'
       ));
+    }
+  },
+  managed: {
+    async get() {
+      if (managedPolicy === null) {
+        throw new Error('Managed storage manifest not found');
+      }
+      return { ...managedPolicy };
     }
   },
   onChanged: {
@@ -74,7 +84,8 @@ describe('SettingsController', () => {
       detectCorsIssues: true,
       exposeAllHeaders: true,
       pausedUntil: null,
-      callRules: []
+      callRules: [],
+      policy: { overridesOff: false, trustedPages: [], everyWebsiteBlocked: false }
     });
 
     stored.set('mode', 'global');
@@ -150,3 +161,73 @@ describe('pausing', () => {
   });
 });
 
+
+describe('organization policy', () => {
+  it('enforces the policy on top of the user\'s own settings', async () => {
+    stored.clear();
+    stored.set('corsDevControlSettings', { enabled: true, mode: 'global', whitelist: ['localhost:5173'] });
+    managedPolicy = { disableOverrides: true, trustedPages: ['localhost:3000', 42], blockEveryWebsiteMode: true };
+    try {
+      const controller = new SettingsController();
+      const settings = await controller.initialize();
+
+      assert.equal(settings.enabled, false);
+      assert.equal(settings.mode, 'whitelist');
+      assert.deepEqual(settings.whitelist, ['*://localhost:3000/*', '*://localhost:5173/*']);
+      assert.deepEqual(settings.policy, { overridesOff: true, trustedPages: ['*://localhost:3000/*'], everyWebsiteBlocked: true });
+
+      // Switching on is refused while the policy keeps overrides off; the user's choice is kept for later.
+      const updated = await controller.update({ enabled: true, mode: 'global' });
+      assert.equal(updated.enabled, false);
+      assert.equal(updated.mode, 'whitelist');
+      assert.equal(stored.get('enabled'), true);
+    } finally {
+      managedPolicy = null;
+    }
+  });
+
+  it('never stores the policy or the pages it trusts', async () => {
+    stored.clear();
+    managedPolicy = { trustedPages: ['localhost:3000'] };
+    try {
+      const controller = new SettingsController();
+      const settings = await controller.initialize();
+      await controller.update({ whitelist: [...settings.whitelist, '*://localhost:5173/*'] });
+
+      assert.deepEqual(stored.get('whitelist'), ['*://localhost:5173/*']);
+      assert.deepEqual(stored.get('corsDevControlSettings').whitelist, ['*://localhost:5173/*']);
+      assert.equal('policy' in stored.get('corsDevControlSettings'), false);
+      // Removing the policy's page is not possible: it is trusted again on the next load.
+      const removed = await controller.update({ whitelist: [] });
+      assert.deepEqual(removed.whitelist, ['*://localhost:3000/*']);
+    } finally {
+      managedPolicy = null;
+    }
+
+    // Once the administrator removes the policy, only the user's own pages remain.
+    const controller = new SettingsController();
+    assert.deepEqual((await controller.initialize()).whitelist, []);
+  });
+
+  it('treats an unreadable managed storage as no policy', async () => {
+    managedPolicy = null;
+    const controller = new SettingsController();
+    assert.deepEqual((await controller.initialize()).policy, { overridesOff: false, trustedPages: [], everyWebsiteBlocked: false });
+  });
+
+  it('notifies subscribers when the policy changes', async () => {
+    const controller = new SettingsController();
+    const received = [];
+    controller.subscribe((settings) => received.push(settings));
+    await controller.initialize();
+
+    managedPolicy = { disableOverrides: true };
+    try {
+      listeners.forEach((listener) => listener({ disableOverrides: { newValue: true } }, 'managed'));
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(received.at(-1).policy.overridesOff, true);
+    } finally {
+      managedPolicy = null;
+    }
+  });
+});

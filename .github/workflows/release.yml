@@ -44,6 +44,8 @@ jobs:
       - run: npm test
       - run: npm run lint:firefox
       - run: npx playwright install --with-deps chromium
+      # Chrome reads enterprise policy from this folder; the policy tests write a test policy into it.
+      - run: sudo install -d -m 0777 /etc/opt/chrome_for_testing/policies/managed
       # Real-browser suites for both builds; the runner image ships Firefox.
       - run: firefox --version
       - run: npm run test:e2e

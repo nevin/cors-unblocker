@@ -19,8 +19,8 @@
     "test": "npm run build:test && node --test test/*.test.mjs",
     "build:e2e": "npm run build && node scripts/build.mjs firefox --e2e && npm run build:test",
     "test:e2e": "npm run build:e2e && node --test --test-concurrency=1 e2e/*.e2e.mjs",
-    "test:e2e:chrome": "npm run build:e2e && node --test --test-concurrency=1 e2e/chrome.e2e.mjs",
-    "test:e2e:firefox": "npm run build:e2e && node --test --test-concurrency=1 e2e/firefox.e2e.mjs",
+    "test:e2e:chrome": "npm run build:e2e && node --test --test-concurrency=1 e2e/chrome*.e2e.mjs",
+    "test:e2e:firefox": "npm run build:e2e && node --test --test-concurrency=1 e2e/firefox*.e2e.mjs",
     "verify-build": "npm run build && node scripts/verify-build.mjs",
     "lint:firefox": "npm run build:firefox && addons-linter dist/firefox --warnings-as-errors"
   },

@@ -35,7 +35,8 @@ export type CorsFix =
   | { kind: 'whitelist-mode' }
   | { kind: 'override-server' };
 
-export type CorsIssueState = 'fixed' | 'blocked' | 'skipped' | 'unfixable';
+// 'managed': the organization's policy keeps overrides off, so nothing here can fix the call.
+export type CorsIssueState = 'fixed' | 'blocked' | 'skipped' | 'unfixable' | 'managed';
 
 export interface CorsFixPlan {
   state: CorsIssueState;
@@ -173,6 +174,10 @@ export function planCorsFix(request: CorsRequest, problem: CorsProblem, serverSe
     return { state: 'skipped', fixes: [] };
   }
 
+  if (settings.policy.overridesOff) {
+    return { state: 'managed', fixes: [] };
+  }
+
   const fixes: CorsFix[] = [];
   if (!settings.enabled) {
     fixes.push({ kind: 'enable' });
@@ -270,7 +275,7 @@ export function planCorsIssues(issues: CorsIssue[], settings: ExtensionSettings)
 }
 
 export function isOpenCorsIssue({ state }: CorsFixPlan): boolean {
-  return state === 'blocked' || state === 'unfixable';
+  return state === 'blocked' || state === 'unfixable' || state === 'managed';
 }
 
 // The deduplicated fixes for every blocked call. Server-header overrides are left out unless asked for,

@@ -10,7 +10,7 @@ The release's `SHA256SUMS.txt` lists the checksums of both.
 ## Before you submit (steps only you can do)
 
 1. Create a Firefox account and sign in at https://addons.mozilla.org/developers/. Turn on two-step authentication (AMO requires it to submit) and accept the distribution agreement.
-2. **Confirm the add-on ID.** The manifest uses `cors-unblocker@nevin.github.io`. It becomes permanent on the first upload, and every later version must keep it. If you want a different one, change `browser_specific_settings.gecko.id` in `manifest.firefox.json` (and `ADDON_ID` in `e2e/firefox.e2e.mjs`) and release again **before** submitting.
+2. **Confirm the add-on ID.** The manifest uses `cors-unblocker@nevin.github.io`. It becomes permanent on the first upload, and every later version must keep it. If you want a different one, change `browser_specific_settings.gecko.id` in `manifest.firefox.json` (and `ADDON_ID` in `e2e/firefoxBrowser.mjs`) and release again **before** submitting.
 3. Load the zip as a temporary add-on (`about:debugging#/runtime/this-firefox` > Load Temporary Add-on) and click through the popup, the DevTools **CORS** panel and Settings once on a real page.
 
 ## Upload

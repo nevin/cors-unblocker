@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "disableOverrides": {
+      "title": "Turn CORS overrides off",
+      "description": "When true, CORS Unblocker never changes response headers and users cannot switch it on. Blocked calls are still detected and explained.",
+      "type": "boolean"
+    },
+    "trustedPages": {
+      "title": "Trusted pages",
+      "description": "Pages whose cross-origin calls get relaxed CORS for every user, such as \"localhost:3000\" or \"https://app.dev.example.com\". Users can add their own but cannot edit or remove these.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "blockEveryWebsiteMode": {
+      "title": "Block \"Every website\" mode",
+      "description": "When true, users cannot relax CORS for every website; only trusted pages and individually unblocked calls are relaxed.",
+      "type": "boolean"
+    }
+  }
+}

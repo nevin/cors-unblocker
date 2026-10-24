@@ -72,6 +72,11 @@ for (const size of [16, 32, 48, 64, 96, 128]) {
   await copyFile(join(root, `assets/icon-${size}.png`), join(outputDirectory, `assets/icon-${size}.png`));
 }
 
+// Chrome reads the schema of the settings administrators can enforce; Firefox takes them from policies.json.
+if (target === 'chrome') {
+  await copyFile(join(root, 'policy-schema.json'), join(outputDirectory, 'policy-schema.json'));
+}
+
 // GPL distribution requires the license text to travel with the extension.
 await copyFile(join(root, 'LICENSE'), join(outputDirectory, 'LICENSE'));
 

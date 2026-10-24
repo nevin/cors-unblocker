@@ -1,5 +1,5 @@
 import { RequestCategory, isRequestCategory } from './requestTypes.js';
-import { DEFAULT_SETTINGS, ExtensionSettings, SETTINGS_KEY, mergeSettings } from './settings.js';
+import { AdminPolicy, DEFAULT_SETTINGS, ExtensionSettings, NO_POLICY, SETTINGS_KEY, applyAdminPolicy, mergeSettings, policyFromManagedStorage, withoutAdminPolicy } from './settings.js';
 
 type StorageChangeHandler = (settings: ExtensionSettings) => void;
 export type SettingsListener = (settings: ExtensionSettings) => void;
@@ -11,15 +11,39 @@ type StoredSettings = Partial<ExtensionSettings> & {
   [SETTINGS_KEY]?: Partial<ExtensionSettings>;
 };
 
-export async function loadSettings(): Promise<ExtensionSettings> {
+// The organization's policy, from managed storage. Firefox rejects the read when no policy is set.
+export async function loadAdminPolicy(): Promise<AdminPolicy> {
+  try {
+    const managed = await runtimeApi.storage.managed?.get(null) as Record<string, unknown> | undefined;
+    return policyFromManagedStorage(managed ?? {});
+  } catch {
+    return NO_POLICY;
+  }
+}
+
+// The user's own settings, as stored, without the policy applied.
+async function loadOwnSettings(): Promise<ExtensionSettings> {
   const stored = await runtimeApi.storage.local.get([SETTINGS_KEY, ...SETTINGS_FIELDS]) as StoredSettings;
   // Individual field keys win over the combined object, which older versions wrote on its own.
   const fieldSettings = Object.fromEntries(SETTINGS_FIELDS.filter((field) => stored[field] !== undefined).map((field) => [field, stored[field]]));
-  return mergeSettings({ ...stored[SETTINGS_KEY], ...fieldSettings });
+  return mergeSettings({ ...stored[SETTINGS_KEY], ...fieldSettings, policy: NO_POLICY });
+}
+
+// The settings in effect: the user's own with the organization's policy applied.
+export async function loadSettings(): Promise<ExtensionSettings> {
+  const [own, policy] = await Promise.all([loadOwnSettings(), loadAdminPolicy()]);
+  return applyAdminPolicy(own, policy);
+}
+
+// What goes to storage: the user's own settings, never the policy.
+function toStored(settings: ExtensionSettings): Omit<ExtensionSettings, 'policy'> {
+  const { policy: _policy, ...own } = settings;
+  return own;
 }
 
 export async function saveSettings(settings: ExtensionSettings): Promise<void> {
-  const normalized = mergeSettings(settings);
+  const policy = await loadAdminPolicy();
+  const normalized = toStored(mergeSettings({ ...withoutAdminPolicy(settings, policy), policy: NO_POLICY }));
   await runtimeApi.storage.local.set({
     [SETTINGS_KEY]: normalized,
     ...Object.fromEntries(SETTINGS_FIELDS.map((field) => [field, normalized[field]]))
@@ -27,18 +51,21 @@ export async function saveSettings(settings: ExtensionSettings): Promise<void> {
 }
 
 export async function updateSettings(next: Partial<ExtensionSettings>): Promise<ExtensionSettings> {
-  const settings = mergeSettings({ ...(await loadSettings()), ...next });
+  const [own, policy] = await Promise.all([loadOwnSettings(), loadAdminPolicy()]);
+  const ownNext = withoutAdminPolicy(next, policy);
+  const settings = mergeSettings({ ...own, ...ownNext });
   // Rule edits can drop opt-ins for removed patterns, and switching on ends a pause, so persist those
   // derived fields whenever what they depend on changes.
-  const changed = SETTINGS_FIELDS.filter((field) => next[field] !== undefined
-    || (field === 'anyOriginTargets' && (next.whitelist !== undefined || next.domainRules !== undefined))
-    || (field === 'pausedUntil' && next.enabled !== undefined));
+  const changed = SETTINGS_FIELDS.filter((field) => ownNext[field] !== undefined
+    || (field === 'anyOriginTargets' && (ownNext.whitelist !== undefined || ownNext.domainRules !== undefined))
+    || (field === 'pausedUntil' && ownNext.enabled !== undefined));
 
+  const stored = toStored(settings);
   await runtimeApi.storage.local.set({
-    [SETTINGS_KEY]: settings,
-    ...Object.fromEntries(changed.map((field) => [field, settings[field]]))
+    [SETTINGS_KEY]: stored,
+    ...Object.fromEntries(changed.map((field) => [field, stored[field]]))
   });
-  return settings;
+  return applyAdminPolicy(settings, policy);
 }
 
 export class SettingsController {
@@ -252,7 +279,8 @@ export function onSettingsChanged(handler: StorageChangeHandler): void {
   runtimeApi.storage.onChanged.addListener((changes, areaName) => {
     const hasSettingsChange = Boolean(changes[SETTINGS_KEY]) || SETTINGS_FIELDS.some((field) => Boolean(changes[field]));
 
-    if (areaName !== 'local' || !hasSettingsChange) {
+    // A policy change arrives as a change to managed storage.
+    if (areaName !== 'managed' && (areaName !== 'local' || !hasSettingsChange)) {
       return;
     }
 

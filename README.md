@@ -130,6 +130,10 @@ http://localhost:3000
 
 CORS Unblocker never sends data anywhere. See [PRIVACY.md](PRIVACY.md).
 
+## Managing it in an organization
+
+Administrators can turn overrides off, trust pages for everyone, and block "Every website" mode through Chrome, Edge or Firefox policy. See [docs/enterprise-policy.md](docs/enterprise-policy.md).
+
 ## Publishing to the stores
 
 - Chrome Web Store: [docs/chrome-web-store.md](docs/chrome-web-store.md)

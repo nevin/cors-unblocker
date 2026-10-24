@@ -13,6 +13,11 @@ for (const target of ['chrome', 'firefox']) {
   for (const file of ['LICENSE', 'popup/index.html', 'popup/shared.css', 'options/index.html', 'options/shared.css', 'devtools/devtools.html', 'devtools/panel.html', 'devtools/panel.css', 'devtools/shared.css', 'assets/icon.svg', 'assets/brand/logo-horizontal-light.svg', 'assets/brand/logo-horizontal-dark.svg', 'assets/icon-16.png', 'assets/icon-32.png', 'assets/icon-48.png', 'assets/icon-128.png']) {
     await access(new URL(file, output));
   }
+
+  // Chrome needs the policy schema the manifest points to, or enterprise policy is ignored.
+  if (target === 'chrome') {
+    await access(new URL(manifest.storage.managed_schema, output));
+  }
 }
 
 // The end-to-end control bridge must never reach a normal or release build.

@@ -114,6 +114,8 @@ function renderHeader(): void {
   }
   if (enabledInput) {
     enabledInput.checked = settings.enabled;
+    enabledInput.disabled = settings.policy.overridesOff;
+    enabledInput.title = settings.policy.overridesOff ? 'Your organization keeps CORS overrides off.' : '';
   }
   if (powerLabel) {
     powerLabel.textContent = settings.enabled ? 'On' : 'Off';
@@ -137,6 +139,17 @@ function getCardView(): CardView {
   const planned = settings.detectCorsIssues ? planCorsIssues(corsIssues, settings) : [];
   const open = planned.filter(isOpenCorsIssue);
   const recentlyFixed = planned.filter(({ issue, state }) => state === 'fixed' && fixedSinceOpen.has(issue.key));
+
+  if (settings.policy.overridesOff) {
+    return {
+      tone: open.length > 0 ? 'alert' : 'neutral',
+      title: open.length > 0 ? `${pluralize(open.length, 'call')} blocked by CORS` : 'CORS overrides are off',
+      text: open.length > 0
+        ? 'Your organization keeps CORS overrides off, so these calls can only be fixed on the server.'
+        : 'Your organization keeps them off. Blocked calls are still listed here.',
+      issues: open
+    };
+  }
 
   if (open.length > 0) {
     return getBlockedView(planned, open, recentlyFixed.length);
@@ -163,6 +176,7 @@ function getCardView(): CardView {
   const detectionNote = settings.detectCorsIssues ? ' No blocked calls detected so far.' : '';
   if (isCorsEnabledForRequest(pageUrl, pageUrl, settings)) {
     const trustedDirectly = settings.whitelist.includes(page);
+    const setByPolicy = settings.policy.trustedPages.includes(page);
     const rule = getEffectiveCorsRuleForRequest(pageUrl, pageUrl, settings);
     const coveredBy = !trustedDirectly && rule.state === 'active'
       ? ` Covered by ${rule.source === 'global' ? 'global mode' : formatPatternForPeople(rule.pattern)}.`
@@ -170,8 +184,8 @@ function getCardView(): CardView {
     return {
       tone: 'success',
       title: `${host} is trusted`,
-      text: `Calls it makes to other sites get relaxed CORS headers.${coveredBy}${detectionNote}`,
-      ...(trustedDirectly ? {
+      text: `Calls it makes to other sites get relaxed CORS headers.${coveredBy}${setByPolicy ? ' Set by your organization.' : ''}${detectionNote}`,
+      ...(trustedDirectly && !setByPolicy ? {
         secondary: {
           label: `Stop trusting ${host}`,
           run: () => save({ whitelist: settings.whitelist.filter((pattern) => pattern !== page) }, `${host} is no longer trusted.`)
@@ -367,7 +381,7 @@ function showNotice(text: string, isError: boolean): void {
 function setBusy(isBusy: boolean): void {
   [enabledInput, primaryButton, secondaryButton, pauseButton, leaveGlobalButton].forEach((control) => {
     if (control) {
-      control.disabled = isBusy;
+      control.disabled = isBusy || (control === enabledInput && settings.policy.overridesOff);
     }
   });
 }

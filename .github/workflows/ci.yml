@@ -31,6 +31,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      # Chrome reads enterprise policy from this folder; the policy tests write a test policy into it.
+      - run: sudo install -d -m 0777 /etc/opt/chrome_for_testing/policies/managed
       - run: npm run test:e2e:chrome
 
   e2e-firefox:
