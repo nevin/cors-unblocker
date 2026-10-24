@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CORS Unblocker",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Fix CORS errors while you develop: see which calls are blocked, then relax CORS headers only for the pages you trust.",
   "homepage_url": "https://github.com/nevin/cors-unblocker",
   "minimum_chrome_version": "128",
