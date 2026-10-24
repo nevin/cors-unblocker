@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { policyFromManagedStorage } from '../dist-test/shared/settings.js';
+import { NO_POLICY, policyFromManagedStorage } from '../dist-test/shared/settings.js';
 import { freshPath, waitFor } from './cases.mjs';
 import { unpackedExtensionId } from './chromeBrowser.mjs';
 
@@ -14,7 +14,8 @@ const OVERRIDES_OFF = { disableOverrides: true, trustedPages: ['app.test'] };
 async function readPolicy(h) {
   return h.name === 'Chrome'
     ? policyFromManagedStorage(await h.worker.evaluate(() => chrome.storage.managed.get(null)))
-    : (await h.bridge('appliedSettings')).policy;
+    // Null until the background has loaded settings after the browser starts.
+    : (await h.bridge('appliedSettings'))?.policy ?? NO_POLICY;
 }
 
 // `browser`: { name, create(options) returning a harness, skip: false or the reason to skip }.
